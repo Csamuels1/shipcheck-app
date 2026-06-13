@@ -1224,16 +1224,32 @@ function App() {
     return <AppSkeleton />
   }
 
-  if (auth.configured && !auth.user) {
-    if (currentPath === '/') {
+  // Always show Landing Page at root unless logged in
+  if (currentPath === '/' && !auth.user) {
+    return (
+      <LandingPage 
+        onNavigate={navigateTo} 
+        billingStatus={billingStatus} 
+        billingPlanLoading={billingPlanLoading}
+      />
+    )
+  }
+
+  // Show AuthView for login/signup paths, or if auth is configured but not logged in
+  if (!auth.user && (auth.configured || currentPath === '/login' || currentPath === '/signup')) {
+    if (!auth.configured) {
       return (
-        <LandingPage 
-          onNavigate={navigateTo} 
-          billingStatus={billingStatus} 
-          billingPlanLoading={billingPlanLoading}
+        <AuthView
+          initialMode={currentPath === '/signup' ? 'signup' : 'signin'}
+          authError="Supabase not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment variables."
+          authLoading={false}
+          onResetPassword={async () => {}}
+          onSignIn={async () => {}}
+          onSignUp={async () => {}}
         />
       )
     }
+
     return (
       <AuthView
         initialMode={currentPath === '/signup' ? 'signup' : 'signin'}
