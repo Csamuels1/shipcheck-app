@@ -34,6 +34,7 @@ import {
 import { AuthView } from './components/AuthView'
 import { PricingView } from './components/PricingView'
 import { LandingPage } from './components/LandingPage'
+import { ResetPasswordView } from './components/ResetPasswordView'
 import { useAuth } from './hooks/useAuth'
 import { supabase, type AuthUser } from './lib/supabase'
 import './App.css'
@@ -147,6 +148,7 @@ type ShipMetrics = {
 
 const storageKey = 'shipcheck.mvp.data.v1'
 const loadErrorKey = 'shipcheck.mvp.load-error'
+const authNoticeKey = 'shipcheck.auth.notice'
 
 const today = new Date()
 const isoToday = today.toISOString().slice(0, 10)
@@ -684,6 +686,11 @@ function App() {
   const [logSaved, setLogSaved] = useState(false)
   const [isBooting, setIsBooting] = useState(true)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
+  const [authNotice, setAuthNotice] = useState(() => {
+    const notice = sessionStorage.getItem(authNoticeKey) ?? ''
+    sessionStorage.removeItem(authNoticeKey)
+    return notice
+  })
 
   useEffect(() => {
     const handlePopState = () => setCurrentPath(window.location.pathname)
@@ -696,14 +703,41 @@ function App() {
     setCurrentPath(path)
   }
 
+  const navigateToLoginWithNotice = (message: string) => {
+    sessionStorage.setItem(authNoticeKey, message)
+    setAuthNotice(message)
+    window.history.replaceState({}, '', '/login')
+    setCurrentPath('/login')
+  }
+
   useEffect(() => {
-    if (auth.configured && auth.user && (currentPath === '/' || currentPath === '/login' || currentPath === '/signup')) {
+    if (auth.configured && auth.user && !auth.isPasswordRecovery && (currentPath === '/' || currentPath === '/login' || currentPath === '/signup')) {
       window.history.replaceState({}, '', '/dashboard')
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentPath('/dashboard')
       setView('dashboard')
     }
-  }, [auth.configured, auth.user, currentPath])
+  }, [auth.configured, auth.isPasswordRecovery, auth.user, currentPath])
+
+  useEffect(() => {
+    if (!auth.configured || auth.authLoading) return
+
+    if (auth.isPasswordRecovery && auth.user && currentPath !== '/reset-password') {
+      window.history.replaceState({}, '', '/reset-password')
+      window.setTimeout(() => setCurrentPath('/reset-password'), 0)
+      return
+    }
+
+    if (currentPath === '/reset-password' && !auth.isPasswordRecovery) {
+      const message = 'Request a new password reset link to change your password.'
+      sessionStorage.setItem(authNoticeKey, message)
+      window.history.replaceState({}, '', '/login')
+      window.setTimeout(() => {
+        setAuthNotice(message)
+        setCurrentPath('/login')
+      }, 0)
+    }
+  }, [auth.authLoading, auth.configured, auth.isPasswordRecovery, auth.user, currentPath])
   const [newProjectDraft, setNewProjectDraft] = useState({
     name: '',
     type: 'MVP/Product' as ProjectType,
@@ -747,7 +781,7 @@ function App() {
   }, [auth.configured, data])
 
   useEffect(() => {
-    if (!auth.configured || !auth.user) return
+    if (!auth.configured || !auth.user || auth.isPasswordRecovery) return
 
     let cancelled = false
     window.setTimeout(() => {
@@ -779,10 +813,10 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [auth.configured, auth.user])
+  }, [auth.configured, auth.isPasswordRecovery, auth.user])
 
   useEffect(() => {
-    if (!auth.configured || !auth.user || !remoteHydrated || !data.onboarded) return
+    if (!auth.configured || !auth.user || auth.isPasswordRecovery || !remoteHydrated || !data.onboarded) return
 
     const timer = window.setTimeout(() => {
       saveRemoteWorkspace(data, auth.user!.id).catch((error: unknown) => {
@@ -791,7 +825,7 @@ function App() {
     }, 500)
 
     return () => window.clearTimeout(timer)
-  }, [auth.configured, auth.user, data, remoteHydrated])
+  }, [auth.configured, auth.isPasswordRecovery, auth.user, data, remoteHydrated])
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIsBooting(false), 350)
@@ -1224,6 +1258,24 @@ function App() {
     return <AppSkeleton />
   }
 
+  if (currentPath === '/reset-password' && auth.isPasswordRecovery && auth.user) {
+    return (
+      <ResetPasswordView
+        onCancel={async () => {
+          auth.clearPasswordRecovery()
+          await auth.signOut()
+          navigateToLoginWithNotice('Log in or request a new password reset link.')
+        }}
+        onComplete={async () => {
+          auth.clearPasswordRecovery()
+          await auth.signOut()
+          navigateToLoginWithNotice('Password updated. Log in with your new password.')
+        }}
+        onUpdatePassword={auth.updatePassword}
+      />
+    )
+  }
+
   // Always show Landing Page at root unless logged in
   if (currentPath === '/' && !auth.user) {
     return (
@@ -1243,6 +1295,7 @@ function App() {
           initialMode={currentPath === '/signup' ? 'signup' : 'signin'}
           authError="Supabase not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment variables."
           authLoading={false}
+          notice={currentPath === '/login' ? authNotice : ''}
           onResetPassword={async () => {}}
           onSignIn={async () => {}}
           onSignUp={async () => {}}
@@ -1255,6 +1308,7 @@ function App() {
         initialMode={currentPath === '/signup' ? 'signup' : 'signin'}
         authError={auth.authError}
         authLoading={auth.authLoading}
+        notice={currentPath === '/login' ? authNotice : ''}
         onResetPassword={auth.resetPassword}
         onSignIn={auth.signIn}
         onSignUp={auth.signUp}

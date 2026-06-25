@@ -1009,6 +1009,21 @@ button:focus-visible {
   line-height: 36px;
 }
 
+.reset-password-panel {
+  gap: 18px;
+}
+
+.reset-password-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--color-harbor);
+  background: var(--color-clear-sky);
+  border-radius: var(--radius-md);
+}
+
 .auth-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1039,10 +1054,78 @@ button:focus-visible {
   background: transparent;
 }
 
+.button-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: spin 0.7s linear infinite;
+}
+
+.reset-confirmation {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  background: var(--color-clear-sky);
+  animation: rise-in 0.2s ease-out both;
+}
+
+.reset-confirmation-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--color-white);
+  background: var(--color-harbor);
+  border-radius: var(--radius-md);
+}
+
+.reset-confirmation h2 {
+  margin: 0 0 6px;
+  color: var(--color-ink);
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.reset-confirmation p {
+  margin: 0;
+  color: var(--color-slate);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.resend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.resend-row > span {
+  color: var(--color-slate);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.reset-error {
+  background: var(--color-white);
+}
+
 .success-note {
   margin: 0;
   color: var(--color-harbor);
   font-weight: 700;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 1120px) {
