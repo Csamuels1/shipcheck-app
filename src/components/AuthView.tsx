@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, ArrowRight, Check } from 'lucide-react'
 
+const rememberedEmailKey = 'shipcheck.auth.email'
+
 type AuthViewProps = {
   initialMode?: 'signin' | 'signup'
   authError: string
@@ -15,7 +17,7 @@ type AuthViewProps = {
 export function AuthView({ initialMode = 'signup', authError, authLoading, notice = '', onNavigate, onResetPassword, onSignIn, onSignUp }: AuthViewProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem(rememberedEmailKey) ?? '')
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
@@ -45,10 +47,12 @@ export function AuthView({ initialMode = 'signup', authError, authLoading, notic
     }
 
     if (mode === 'signup') {
+      localStorage.setItem(rememberedEmailKey, email.trim())
       await onSignUp(name.trim(), email.trim(), password)
       return
     }
 
+    localStorage.setItem(rememberedEmailKey, email.trim())
     await onSignIn(email.trim(), password)
   }
 
@@ -64,6 +68,7 @@ export function AuthView({ initialMode = 'signup', authError, authLoading, notic
 
     setResetLoading(true)
     try {
+      localStorage.setItem(rememberedEmailKey, resetEmail)
       await onResetPassword(resetEmail)
       setCanResend(false)
       setResetSentEmail(resetEmail)
@@ -152,16 +157,17 @@ export function AuthView({ initialMode = 'signup', authError, authLoading, notic
             {mode === 'signup' && (
               <label>
                 Name
-                <input value={name} autoComplete="name" onChange={(event) => setName(event.target.value)} />
+                <input name="name" value={name} autoComplete="name" onChange={(event) => setName(event.target.value)} />
               </label>
             )}
             <label>
               Email
-              <input value={email} type="email" autoComplete="email" onChange={(event) => setEmail(event.target.value)} />
+              <input name="email" value={email} type="email" autoComplete="email" onChange={(event) => setEmail(event.target.value)} />
             </label>
             <label>
               Password
               <input
+                name="password"
                 value={password}
                 type="password"
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
