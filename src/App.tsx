@@ -36,6 +36,7 @@ import { PricingView } from './components/PricingView'
 import { LandingPage } from './components/LandingPage'
 import { ResetPasswordView } from './components/ResetPasswordView'
 import { useAuth } from './hooks/useAuth'
+import { plans } from './lib/plans'
 import { supabase, type AuthUser } from './lib/supabase'
 import './App.css'
 
@@ -56,6 +57,14 @@ type User = {
     weeklyReport: boolean
     dailyReminder: boolean
   }
+}
+
+type BillingInfo = {
+  status: string
+  currentPeriodEnd: string
+  seatLimit: number
+  creemCustomerId: string
+  creemSubscriptionId: string
 }
 
 type Project = {
@@ -107,6 +116,7 @@ type BuildLog = {
 
 type AppData = {
   user: User
+  billing: BillingInfo
   projects: Project[]
   activeProjectId: string
   scopeItems: ScopeItem[]
@@ -149,6 +159,8 @@ type ShipMetrics = {
 const storageKey = 'shipcheck.mvp.data.v1'
 const loadErrorKey = 'shipcheck.mvp.load-error'
 const authNoticeKey = 'shipcheck.auth.notice'
+const trialBannerDismissedKey = 'shipcheck.trial-upgrade.dismissed'
+const trialLengthDays = 30
 
 const today = new Date()
 const isoToday = today.toISOString().slice(0, 10)
@@ -197,6 +209,13 @@ const seedData: AppData = {
       weeklyReport: true,
       dailyReminder: true,
     },
+  },
+  billing: {
+    status: 'trialing',
+    currentPeriodEnd: '',
+    seatLimit: 1,
+    creemCustomerId: '',
+    creemSubscriptionId: '',
   },
   activeProjectId: 'project-1',
   onboarded: true,
@@ -350,6 +369,10 @@ function loadData(): AppData {
           ...parsed.user,
           notificationPreferences: parsed.user?.notificationPreferences ?? seedData.user.notificationPreferences,
         },
+        billing: {
+          ...seedData.billing,
+          ...parsed.billing,
+        },
         scopeItems: (parsed.scopeItems ?? []).map((item) => ({
           ...item,
           projectId: item.projectId ?? parsed.activeProjectId ?? seedData.activeProjectId,
@@ -372,6 +395,10 @@ function loadData(): AppData {
           ...seedData.user,
           ...parsed.user,
           notificationPreferences: parsed.user?.notificationPreferences ?? seedData.user.notificationPreferences,
+        },
+        billing: {
+          ...seedData.billing,
+          ...parsed.billing,
         },
         projects: [parsed.project],
         activeProjectId: parsed.project.id,
@@ -415,6 +442,22 @@ function formatDate(value: string | Date) {
 function getDaysUntil(value: string | Date) {
   const date = typeof value === 'string' ? new Date(`${value}T00:00:00`) : value
   return Math.ceil((date.getTime() - today.getTime()) / 86400000)
+}
+
+function getTrialDaysLeft(trialStartedAt: string) {
+  return Math.max(0, trialLengthDays - Math.max(0, daysBetween(trialStartedAt, isoToday)))
+}
+
+function getTrialExpiryDate(trialStartedAt: string) {
+  return addDays(new Date(`${trialStartedAt}T00:00:00`), trialLengthDays).toISOString().slice(0, 10)
+}
+
+function isFreeTrial(plan: string) {
+  return plan === 'Free Trial'
+}
+
+function showsUpgradePrompt(plan: string) {
+  return plan === 'Free Trial' || plan === 'Solo'
 }
 
 function clampPercent(value: number) {
@@ -508,13 +551,19 @@ async function loadRemoteWorkspace(user: AuthUser): Promise<AppData> {
   if (!supabase) return seedData
 
   const organizationId = await getPrimaryOrganizationId(user.id)
-  const [{ data: profile, error: profileError }, { data: projects, error: projectsError }] = await Promise.all([
+  const [
+    { data: profile, error: profileError },
+    { data: projects, error: projectsError },
+    { data: billing, error: billingError },
+  ] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
     supabase.from('projects').select('*').eq('organization_id', organizationId).order('created_at', { ascending: true }),
+    supabase.from('billing_subscriptions').select('*').eq('organization_id', organizationId).maybeSingle(),
   ])
 
   if (profileError) throw profileError
   if (projectsError) throw projectsError
+  if (billingError) throw billingError
 
   const projectRows = projects ?? []
   const projectIds = projectRows.map((project) => project.id)
@@ -537,9 +586,16 @@ async function loadRemoteWorkspace(user: AuthUser): Promise<AppData> {
       name: String(profile?.name || user.user_metadata?.name || user.email || 'ShipCheck user'),
       email: String(profile?.email || user.email || ''),
       builderType: String(profile?.builder_type || 'Solo builder'),
-      plan: String(profile?.plan || 'Free Trial'),
+      plan: String(billing?.plan || profile?.plan || 'Free Trial'),
       trialStartedAt: String(profile?.trial_started_at || isoToday).slice(0, 10),
       notificationPreferences: seedData.user.notificationPreferences,
+    },
+    billing: {
+      status: String(billing?.status || 'trialing'),
+      currentPeriodEnd: billing?.current_period_end ? String(billing.current_period_end).slice(0, 10) : '',
+      seatLimit: Number(billing?.seat_limit || 1),
+      creemCustomerId: String(billing?.creem_customer_id || ''),
+      creemSubscriptionId: String(billing?.creem_subscription_id || ''),
     },
     projects: mappedProjects,
     activeProjectId: mappedProjects[0]?.id ?? '',
@@ -683,6 +739,8 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [quickLogSheetOpen, setQuickLogSheetOpen] = useState(false)
   const [dismissedCreepBanner, setDismissedCreepBanner] = useState(false)
+  const [dismissedTrialBanner, setDismissedTrialBanner] = useState(() => sessionStorage.getItem(trialBannerDismissedKey) === 'true')
+  const [upgradeModalReason, setUpgradeModalReason] = useState('')
   const [logSaved, setLogSaved] = useState(false)
   const [isBooting, setIsBooting] = useState(true)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
@@ -936,6 +994,15 @@ function App() {
     }
   }, [activeLogs, activeProject, activeScopeItems])
 
+  const trialDaysLeft = getTrialDaysLeft(data.user.trialStartedAt)
+  const trialExpiryDate = getTrialExpiryDate(data.user.trialStartedAt)
+  const showTrialUpgradeBanner = isFreeTrial(data.user.plan) && trialDaysLeft <= 5 && !dismissedTrialBanner
+
+  const dismissTrialUpgradeBanner = () => {
+    sessionStorage.setItem(trialBannerDismissedKey, 'true')
+    setDismissedTrialBanner(true)
+  }
+
   const setProject = (project: Partial<Project>) => {
     setData((current) => ({
       ...current,
@@ -948,6 +1015,10 @@ function App() {
   const createProject = () => {
     if (!newProjectDraft.name.trim()) {
       setProjectFormError('Add a project name before creating this workspace.')
+      return
+    }
+    if (isFreeTrial(data.user.plan) && activeProjects.length >= 1) {
+      setUpgradeModalReason('Free Trial includes 1 active project. Upgrade to Solo or a team plan to create more launch workspaces.')
       return
     }
     const project = createBlankProject(newProjectDraft.name.trim(), newProjectDraft.type, newProjectDraft.weeklyAvailableHours)
@@ -1219,6 +1290,11 @@ function App() {
     }
   }
 
+  const manageBilling = () => {
+    setBillingStatus('Creem billing management is not connected yet. Choose a plan here or contact support for subscription changes.')
+    setView('pricing')
+  }
+
   const markProjectShipped = () => {
     setProject({ status: 'Shipped' })
     setView('shipped')
@@ -1382,37 +1458,51 @@ function App() {
           ))}
         </div>
 
-        <div className="sidebar-card help-card">
-          <button className="help-link" type="button">
-            <HelpCircle size={15} />
-            Help / Docs
-          </button>
-        </div>
-
-        <div className="sidebar-card user-card">
-          <div className="user-summary">
-            <span className="user-avatar" aria-hidden="true">
-              {data.user.name
-                .split(' ')
-                .map((part) => part[0])
-                .join('')
-                .slice(0, 2)
-                .toUpperCase()}
-            </span>
-            <div>
-              <strong>{data.user.name}</strong>
-              <p>{data.user.plan} plan</p>
-            </div>
+        <div className="sidebar-bottom">
+          <div className="sidebar-card help-card">
+            <button className="help-link" type="button">
+              <HelpCircle size={15} />
+              Help / Docs
+            </button>
           </div>
-          <p>Trial started {formatDate(data.user.trialStartedAt)}</p>
-          <button className="help-link" type="button" onClick={() => setView('settings')}>
-            <Settings size={15} />
-            Settings
-          </button>
-          <button className="help-link" type="button" onClick={logOutDemo}>
-            <LogOut size={15} />
-            Log out
-          </button>
+
+          {showsUpgradePrompt(data.user.plan) && (
+            <div className="sidebar-card upgrade-card">
+              <span className="eyebrow">{isFreeTrial(data.user.plan) ? `Free Trial - ${trialDaysLeft} days left` : 'Solo plan'}</span>
+              <strong>{isFreeTrial(data.user.plan) ? 'Keep shipping after trial.' : 'Need teammates?'}</strong>
+              <p>{isFreeTrial(data.user.plan) ? 'Upgrade to unlock more active projects.' : 'Upgrade when shared projects and seats matter.'}</p>
+              <button className="upgrade-link" type="button" onClick={() => setView('pricing')}>
+                Upgrade Plan
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          )}
+
+          <div className="sidebar-card user-card">
+            <div className="user-summary">
+              <span className="user-avatar" aria-hidden="true">
+                {data.user.name
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </span>
+              <div>
+                <strong>{data.user.name}</strong>
+                <p>{data.user.plan} plan</p>
+              </div>
+            </div>
+            <p>Trial started {formatDate(data.user.trialStartedAt)}</p>
+            <button className="help-link" type="button" onClick={() => setView('settings')}>
+              <Settings size={15} />
+              Settings
+            </button>
+            <button className="help-link" type="button" onClick={logOutDemo}>
+              <LogOut size={15} />
+              Log out
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -1476,6 +1566,9 @@ function App() {
             clearProjectFormError={() => setProjectFormError('')}
             dismissedCreepBanner={dismissedCreepBanner}
             dismissCreepBanner={() => setDismissedCreepBanner(true)}
+            showTrialUpgradeBanner={showTrialUpgradeBanner}
+            trialDaysLeft={trialDaysLeft}
+            dismissTrialUpgradeBanner={dismissTrialUpgradeBanner}
           />
         )}
 
@@ -1541,6 +1634,7 @@ function App() {
             emailReportStatus={emailReportStatus}
             emailReportSending={emailReportSending}
             sendReportEmail={sendReportEmail}
+            plan={data.user.plan}
           />
         )}
 
@@ -1575,9 +1669,24 @@ function App() {
             startOnboarding={() => setShowOnboarding(true)}
             markProjectShipped={markProjectShipped}
             resetDemo={resetDemo}
+            billing={data.billing}
+            trialDaysLeft={trialDaysLeft}
+            trialExpiryDate={trialExpiryDate}
+            setView={setView}
+            manageBilling={manageBilling}
           />
         )}
       </main>
+
+      {upgradeModalReason && (
+        <UpgradeModal
+          activePlan={data.user.plan}
+          billingPlanLoading={billingPlanLoading}
+          onClose={() => setUpgradeModalReason('')}
+          reason={upgradeModalReason}
+          startCheckout={startBillingCheckout}
+        />
+      )}
 
       <button
         className="mobile-fab"
@@ -1905,6 +2014,9 @@ function Dashboard({
   clearProjectFormError,
   dismissedCreepBanner,
   dismissCreepBanner,
+  showTrialUpgradeBanner,
+  trialDaysLeft,
+  dismissTrialUpgradeBanner,
 }: {
   data: AppData
   project: Project
@@ -1919,6 +2031,9 @@ function Dashboard({
   clearProjectFormError: () => void
   dismissedCreepBanner: boolean
   dismissCreepBanner: () => void
+  showTrialUpgradeBanner: boolean
+  trialDaysLeft: number
+  dismissTrialUpgradeBanner: () => void
 }) {
   const completedPercent = metrics.shipHours > 0 ? (metrics.completedShipHours / metrics.shipHours) * 100 : 0
   const daysUntilForecast = getDaysUntil(metrics.forecastDate)
@@ -1926,6 +2041,22 @@ function Dashboard({
 
   return (
     <section className="page-grid">
+      {showTrialUpgradeBanner && (
+        <div className="trial-upgrade-banner">
+          <CreditCard size={20} />
+          <div>
+            <strong>Free Trial ends in {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'}.</strong>
+            <p>Upgrade now so your active projects, reports, and forecasts stay available after the trial.</p>
+          </div>
+          <button className="button coral" type="button" onClick={() => setView('pricing')}>
+            Upgrade
+          </button>
+          <button className="icon-button" type="button" aria-label="Dismiss trial upgrade prompt" onClick={dismissTrialUpgradeBanner}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <div className={`forecast-panel ${metrics.launchStatus === 'Slipping' ? 'slipping' : ''}`}>
         <div>
           <span className="eyebrow">Launch forecast</span>
@@ -2641,6 +2772,7 @@ function ReportsView({
   emailReportStatus,
   emailReportSending,
   sendReportEmail,
+  plan,
 }: {
   project: Project
   metrics: ShipMetrics
@@ -2648,6 +2780,7 @@ function ReportsView({
   emailReportStatus: string
   emailReportSending: boolean
   sendReportEmail: () => void
+  plan: string
 }) {
   const suggestions = [
     metrics.addedHours > 0 ? `Review ${metrics.addedItems.length} added scope items before adding more work.` : 'Scope has stayed steady since baseline.',
@@ -2787,6 +2920,16 @@ function ReportsView({
           ))}
         </div>
       </div>
+
+      {isFreeTrial(plan) && (
+        <div className="report-upgrade-banner">
+          <CreditCard size={18} />
+          <span>Unlock full report history with Solo - $9/month.</span>
+          <button className="button coral" type="button" onClick={() => setView('pricing')}>
+            Upgrade
+          </button>
+        </div>
+      )}
     </section>
   )
 }
@@ -2837,6 +2980,61 @@ function ShippedMoment({
   )
 }
 
+function UpgradeModal({
+  activePlan,
+  billingPlanLoading,
+  onClose,
+  reason,
+  startCheckout,
+}: {
+  activePlan: string
+  billingPlanLoading: string
+  onClose: () => void
+  reason: string
+  startCheckout: (plan: string) => void
+}) {
+  const upgradePlans = plans.filter((plan) => plan.name !== 'Free Trial')
+
+  return (
+    <div className="modal-overlay" role="presentation">
+      <section className="modal upgrade-modal" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
+        <button className="icon-button modal-close" type="button" aria-label="Close upgrade options" onClick={onClose}>
+          <X size={16} />
+        </button>
+        <span className="eyebrow">Plan limit reached</span>
+        <h2 id="upgrade-modal-title">Upgrade to keep building.</h2>
+        <p>{reason}</p>
+        <div className="upgrade-plan-grid">
+          {upgradePlans.map((plan) => (
+            <article className={`upgrade-plan ${activePlan === plan.name ? 'selected' : ''}`} key={plan.name}>
+              <div>
+                <h3>{plan.name}</h3>
+                <strong>{plan.price}</strong>
+                <p>{plan.detail}</p>
+                <span>{plan.seats}</span>
+              </div>
+              <button
+                className={plan.name === 'Enterprise' ? 'button secondary full' : 'button coral full'}
+                type="button"
+                onClick={() => startCheckout(plan.name)}
+                disabled={activePlan === plan.name || billingPlanLoading === plan.name}
+              >
+                {activePlan === plan.name
+                  ? 'Current plan'
+                  : billingPlanLoading === plan.name
+                    ? 'Starting checkout...'
+                    : plan.name === 'Enterprise'
+                      ? 'Contact sales'
+                      : 'Checkout with Creem'}
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function SettingsView({
   data,
   project,
@@ -2847,6 +3045,11 @@ function SettingsView({
   startOnboarding,
   markProjectShipped,
   resetDemo,
+  billing,
+  trialDaysLeft,
+  trialExpiryDate,
+  setView,
+  manageBilling,
 }: {
   data: AppData
   project: Project
@@ -2857,7 +3060,15 @@ function SettingsView({
   startOnboarding: () => void
   markProjectShipped: () => void
   resetDemo: () => void
+  billing: BillingInfo
+  trialDaysLeft: number
+  trialExpiryDate: string
+  setView: (view: ViewKey) => void
+  manageBilling: () => void
 }) {
+  const trialing = isFreeTrial(data.user.plan)
+  const paidPlan = !trialing && data.user.plan !== 'Free Trial'
+
   return (
     <section className="page-grid">
       <div className="section-band">
@@ -2960,10 +3171,36 @@ function SettingsView({
             </label>
           </div>
         </div>
-        <div className="settings-placeholder">
+        <div className="billing-panel">
           <CreditCard size={22} />
-          <h3>Billing management</h3>
-          <p>Plan selection is available today. Subscription cancellation and invoices will connect when Stripe is added.</p>
+          <span className="eyebrow">Plan & Billing</span>
+          <h3>{data.user.plan}</h3>
+          {trialing ? (
+            <p>
+              Trial expires {formatDate(trialExpiryDate)}. {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} left.
+            </p>
+          ) : (
+            <p>
+              Creem status: {billing.status || 'active'}.{' '}
+              {billing.currentPeriodEnd
+                ? `Next billing date is ${formatDate(billing.currentPeriodEnd)}.`
+                : 'Next billing date appears after Creem syncs the subscription.'}
+            </p>
+          )}
+          <div className="billing-meta">
+            <span>{billing.seatLimit} seat{billing.seatLimit === 1 ? '' : 's'} included</span>
+            {billing.creemSubscriptionId && <span>Subscription connected</span>}
+          </div>
+          <div className="button-row">
+            <button className="button primary" type="button" onClick={() => setView('pricing')}>
+              Change Plan
+            </button>
+            {paidPlan && (
+              <button className="button secondary" type="button" onClick={manageBilling}>
+                Manage Billing
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
