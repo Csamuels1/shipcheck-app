@@ -2140,42 +2140,47 @@ button:focus-visible {
   }
 }
 
-.skeleton-panel,
-.skeleton-line {
+.skeleton {
+  display: block;
+  max-width: 100%;
+  background: linear-gradient(90deg, var(--color-mist) 0%, var(--color-cloud) 42%, var(--color-mist) 84%);
+  background-size: 220% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.skeleton-card {
+  pointer-events: none;
+  cursor: default;
+}
+
+.forecast-skeleton {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--color-mist);
   border-radius: var(--radius-md);
-  background: linear-gradient(90deg, var(--color-mist), var(--color-cloud), var(--color-mist));
-  background-size: 200% 100%;
-  animation: shimmer 1.5s linear infinite;
-}
-
-.skeleton-panel {
-  min-height: 128px;
-  min-width: 0;
-}
-
-.skeleton-panel.forecast {
-  min-height: 220px;
+  padding: 24px;
   margin-bottom: 16px;
+  background: var(--color-white);
 }
 
-.skeleton-board,
-.skeleton-report {
+.forecast-skeleton-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+}
+
+.skeleton-board {
   margin-top: 16px;
 }
 
-.skeleton-panel.column {
-  min-height: 320px;
+.skeleton-column {
+  min-height: 360px;
 }
 
-.skeleton-line {
-  height: 40px;
-}
-
-.skeleton-line.short {
-  width: 70%;
+.weekly-report-skeleton {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
 }
 
 @keyframes shimmer {
@@ -2562,7 +2567,8 @@ button:focus-visible {
   .shipped-stats,
   .project-card-grid,
   .skeleton-board,
-  .skeleton-report {
+  .forecast-skeleton-stats,
+  .weekly-report-skeleton .report-grid {
     grid-template-columns: 1fr;
   }
 }

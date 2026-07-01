@@ -1946,33 +1946,153 @@ function MetricCard({
   )
 }
 
+function Skeleton({
+  width = '100%',
+  height = 16,
+  borderRadius = 'var(--radius-md)',
+  className = '',
+}: {
+  width?: number | string
+  height?: number | string
+  borderRadius?: number | string
+  className?: string
+}) {
+  return (
+    <span
+      className={`skeleton ${className}`}
+      style={{
+        width: typeof width === 'number' ? `${width}px` : width,
+        height: typeof height === 'number' ? `${height}px` : height,
+        borderRadius: typeof borderRadius === 'number' ? `${borderRadius}px` : borderRadius,
+      }}
+    />
+  )
+}
+
+function ForecastPanelSkeleton() {
+  return (
+    <section className="forecast-skeleton" aria-label="Loading launch forecast">
+      <Skeleton width={140} height={14} borderRadius={999} />
+      <Skeleton width="min(360px, 80%)" height={44} />
+      <Skeleton width={88} height={28} borderRadius={999} />
+      <Skeleton height={12} borderRadius={999} />
+      <div className="forecast-skeleton-stats">
+        <Skeleton height={74} />
+        <Skeleton height={74} />
+        <Skeleton height={74} />
+      </div>
+    </section>
+  )
+}
+
+function ProjectCardsSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div className="project-card-grid" aria-label="Loading project cards">
+      {Array.from({ length: count }).map((_, index) => (
+        <article className="project-card skeleton-card" key={index}>
+          <div className="project-card-head">
+            <Skeleton width="58%" height={18} />
+            <Skeleton width={74} height={24} borderRadius={999} />
+          </div>
+          <Skeleton width={96} height={22} borderRadius={999} />
+          <Skeleton width="72%" height={14} />
+          <Skeleton height={10} borderRadius={999} />
+          <Skeleton width="86%" height={12} />
+        </article>
+      ))}
+    </div>
+  )
+}
+
+function ScopeBoardSkeleton() {
+  return (
+    <div className="board skeleton-board" aria-label="Loading scope board">
+      {['Ship', 'Later', 'Cut'].map((column) => (
+        <section className="board-column skeleton-column" key={column}>
+          <div className="column-header">
+            <div>
+              <Skeleton width={72} height={20} />
+              <Skeleton width={150} height={12} />
+            </div>
+            <Skeleton width={62} height={24} borderRadius={999} />
+          </div>
+          <div className="scope-list">
+            {[0, 1, 2].map((item) => (
+              <article className="scope-card skeleton-card" key={item}>
+                <Skeleton width="70%" height={16} />
+                <div className="scope-meta">
+                  <Skeleton width={50} height={20} borderRadius={999} />
+                  <Skeleton width={44} height={20} borderRadius={999} />
+                  <Skeleton width={82} height={20} borderRadius={999} />
+                </div>
+                <Skeleton height={38} />
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function BuildLogListSkeleton() {
+  return (
+    <section className="log-history" aria-label="Loading build logs">
+      <div className="section-header">
+        <div>
+          <Skeleton width={72} height={12} borderRadius={999} />
+          <Skeleton width={210} height={28} />
+        </div>
+      </div>
+      {[0, 1, 2, 3].map((row) => (
+        <article className="log-card skeleton-card" key={row}>
+          <div>
+            <Skeleton width="58%" height={18} />
+            <Skeleton width="82%" height={14} />
+          </div>
+          <Skeleton width={72} height={24} borderRadius={999} />
+        </article>
+      ))}
+    </section>
+  )
+}
+
+function WeeklyReportSkeleton() {
+  return (
+    <section className="section-band weekly-report-skeleton" aria-label="Loading weekly report">
+      <Skeleton width={160} height={14} borderRadius={999} />
+      <Skeleton width="min(420px, 86%)" height={32} />
+      <div className="report-grid">
+        <Skeleton height={108} />
+        <Skeleton height={108} />
+        <Skeleton height={108} />
+      </div>
+      <Skeleton height={180} />
+    </section>
+  )
+}
+
 function AppSkeleton() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="skeleton-line short" />
-        <div className="skeleton-line" />
-        <div className="skeleton-line" />
-        <div className="skeleton-line" />
+        <Skeleton width={34} height={34} />
+        <Skeleton width="90%" height={40} />
+        <Skeleton width="86%" height={40} />
+        <Skeleton width="82%" height={40} />
       </aside>
       <main className="main">
-        <div className="skeleton-panel forecast" />
+        <ForecastPanelSkeleton />
         <div className="metrics-grid">
-          <div className="skeleton-panel" />
-          <div className="skeleton-panel" />
-          <div className="skeleton-panel" />
-          <div className="skeleton-panel" />
+          <Skeleton height={128} />
+          <Skeleton height={128} />
+          <Skeleton height={128} />
+          <Skeleton height={128} />
         </div>
-        <div className="skeleton-board" aria-label="Loading scope board">
-          <div className="skeleton-panel column" />
-          <div className="skeleton-panel column" />
-          <div className="skeleton-panel column" />
-        </div>
-        <div className="report-grid skeleton-report" aria-label="Loading reports">
-          <div className="skeleton-panel" />
-          <div className="skeleton-panel" />
-          <div className="skeleton-panel" />
-        </div>
+        <ProjectCardsSkeleton />
+        <ScopeBoardSkeleton />
+        <BuildLogListSkeleton />
+        <WeeklyReportSkeleton />
       </main>
     </div>
   )
