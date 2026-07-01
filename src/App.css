@@ -1611,6 +1611,10 @@ button:focus-visible {
   background: var(--color-white);
 }
 
+.forecast-panel.forecast-pulse {
+  animation: forecast-flicker 0.3s ease-out both;
+}
+
 .forecast-panel.slipping {
   border-color: var(--color-coral);
 }
@@ -1780,13 +1784,19 @@ button:focus-visible {
 .board-column {
   border-left: 4px solid var(--color-harbor);
   background: var(--color-cloud);
-  transition: background 150ms ease, border-color 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease, border-style 150ms ease;
 }
 
 .board-column:hover,
 .board-column:focus-within {
   background: var(--color-clear-sky);
   border-left-color: var(--color-harbor);
+}
+
+.board-column.drag-over {
+  border: 2px dashed var(--color-harbor);
+  border-left-width: 4px;
+  background: #f0fdf9;
 }
 
 .board-column:nth-child(2) {
@@ -1797,20 +1807,35 @@ button:focus-visible {
   border-left-color: var(--color-coral);
 }
 
+.board-column.drag-over {
+  border-color: var(--color-harbor);
+  border-left-color: var(--color-harbor);
+}
+
 .scope-card {
   position: relative;
   padding: 14px 16px 14px 34px;
+  cursor: grab;
   transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   animation: settle-in 0.2s ease-out both;
 }
 
 .scope-card:hover {
   background: var(--color-cloud);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-.scope-card:active {
+.scope-card:active,
+.scope-card.drag-active {
+  cursor: grabbing;
+  opacity: 0.7;
   transform: scale(1.02);
-  box-shadow: 0 10px 24px rgba(24, 32, 31, 0.08);
+  box-shadow: 0 12px 28px rgba(24, 32, 31, 0.14);
+}
+
+.scope-card.drop-settle {
+  animation: settle-in 0.2s ease-out both;
 }
 
 .drag-handle {
@@ -1854,6 +1879,20 @@ button:focus-visible {
   background: var(--color-coral);
   font-size: 12px;
   font-weight: 800;
+}
+
+@keyframes forecast-flicker {
+  0% {
+    opacity: 1;
+  }
+
+  45% {
+    opacity: 0.62;
+  }
+
+  100% {
+    opacity: 1;
+  }
 }
 
 .confidence-dot::before {

@@ -794,6 +794,7 @@ function App() {
   const [upgradeModalReason, setUpgradeModalReason] = useState('')
   const [logSaved, setLogSaved] = useState(false)
   const [forecastMovement, setForecastMovement] = useState<ForecastMovement | null>(null)
+  const [forecastPulsing, setForecastPulsing] = useState(false)
   const [isBooting, setIsBooting] = useState(true)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
   const [authNotice, setAuthNotice] = useState(() => {
@@ -1128,6 +1129,11 @@ function App() {
   }
 
   const updateScopeItem = (id: string, patch: Partial<ScopeItem>) => {
+    if (patch.status) {
+      setForecastPulsing(true)
+      window.setTimeout(() => setForecastPulsing(false), 300)
+    }
+
     setData((current) => ({
       ...current,
       scopeItems: current.scopeItems.map((item) => {
@@ -1682,6 +1688,7 @@ function App() {
             showTrialUpgradeBanner={showTrialUpgradeBanner}
             trialDaysLeft={trialDaysLeft}
             dismissTrialUpgradeBanner={dismissTrialUpgradeBanner}
+            forecastPulsing={forecastPulsing}
           />
         )}
 
@@ -2262,6 +2269,7 @@ function Dashboard({
   showTrialUpgradeBanner,
   trialDaysLeft,
   dismissTrialUpgradeBanner,
+  forecastPulsing,
 }: {
   data: AppData
   project: Project
@@ -2280,6 +2288,7 @@ function Dashboard({
   showTrialUpgradeBanner: boolean
   trialDaysLeft: number
   dismissTrialUpgradeBanner: () => void
+  forecastPulsing: boolean
 }) {
   const completedPercent = metrics.shipHours > 0 ? (metrics.completedShipHours / metrics.shipHours) * 100 : 0
   const daysUntilForecast = getDaysUntil(metrics.forecastDate)
@@ -2361,7 +2370,7 @@ function Dashboard({
         </div>
       )}
 
-      <div className={`forecast-panel ${metrics.launchStatus === 'Slipping' ? 'slipping' : ''}`}>
+      <div className={`forecast-panel ${metrics.launchStatus === 'Slipping' ? 'slipping' : ''} ${forecastPulsing ? 'forecast-pulse' : ''}`}>
         <div>
           <span className="eyebrow">Launch forecast</span>
           <h2>
@@ -2610,7 +2619,23 @@ function ScopeView({
     later: false,
     cut: false,
   })
+  const [draggingItemId, setDraggingItemId] = useState('')
+  const [dragOverColumn, setDragOverColumn] = useState<ColumnKey | ''>('')
+  const [droppedItemId, setDroppedItemId] = useState('')
   const focusScopeInput = () => document.querySelector<HTMLInputElement>('[data-scope-title-input="true"]')?.focus()
+
+  const clearDragState = () => {
+    setDraggingItemId('')
+    setDragOverColumn('')
+  }
+
+  const dropItemIntoColumn = (column: ColumnKey) => {
+    if (!draggingItemId) return
+    updateItem(draggingItemId, { column })
+    setDroppedItemId(draggingItemId)
+    window.setTimeout(() => setDroppedItemId(''), 220)
+    clearDragState()
+  }
 
   return (
     <section className="page-stack">
@@ -2674,7 +2699,21 @@ function ScopeView({
           const total = columnItems.reduce((sum, item) => sum + item.estimateHours, 0)
           const isMobileExpanded = mobileExpandedColumns[column]
           return (
-            <div className={`board-column ${isMobileExpanded ? 'mobile-open' : 'mobile-collapsed'}`} key={column}>
+            <div
+              className={`board-column ${isMobileExpanded ? 'mobile-open' : 'mobile-collapsed'} ${dragOverColumn === column ? 'drag-over' : ''}`}
+              key={column}
+              onDragOver={(event) => {
+                event.preventDefault()
+                if (draggingItemId) setDragOverColumn(column)
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOverColumn('')
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                dropItemIntoColumn(column)
+              }}
+            >
               <div className="column-header">
                 <div>
                   <h3>{labels[column].title}</h3>
@@ -2713,7 +2752,19 @@ function ScopeView({
                   />
                 )}
                 {columnItems.map((item) => (
-                  <article className={`scope-card ${!item.existedAtBaseline ? 'added' : ''}`} key={item.id}>
+                  <article
+                    className={`scope-card ${!item.existedAtBaseline ? 'added' : ''} ${draggingItemId === item.id ? 'drag-active' : ''} ${
+                      droppedItemId === item.id ? 'drop-settle' : ''
+                    }`}
+                    draggable
+                    key={item.id}
+                    onDragStart={(event) => {
+                      setDraggingItemId(item.id)
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('text/plain', item.id)
+                    }}
+                    onDragEnd={clearDragState}
+                  >
                     <GripVertical className="drag-handle" size={16} aria-hidden="true" />
                     {!item.existedAtBaseline && <span className="added-badge">Added after baseline</span>}
                     <div className="scope-card-head">
