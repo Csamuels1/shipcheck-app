@@ -7,6 +7,7 @@ create table if not exists public.profiles (
   builder_type text not null default 'Solo builder',
   plan text not null default 'Free Trial',
   trial_started_at timestamptz not null default now(),
+  onboarding_forecast_seen boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

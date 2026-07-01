@@ -53,6 +53,7 @@ type User = {
   builderType: string
   plan: string
   trialStartedAt: string
+  onboardingForecastSeen: boolean
   notificationPreferences: {
     weeklyReport: boolean
     dailyReminder: boolean
@@ -205,6 +206,7 @@ const seedData: AppData = {
     builderType: 'Solo builder',
     plan: 'Free Trial',
     trialStartedAt: isoToday,
+    onboardingForecastSeen: false,
     notificationPreferences: {
       weeklyReport: true,
       dailyReminder: true,
@@ -588,6 +590,7 @@ async function loadRemoteWorkspace(user: AuthUser): Promise<AppData> {
       builderType: String(profile?.builder_type || 'Solo builder'),
       plan: String(billing?.plan || profile?.plan || 'Free Trial'),
       trialStartedAt: String(profile?.trial_started_at || isoToday).slice(0, 10),
+      onboardingForecastSeen: Boolean(profile?.onboarding_forecast_seen),
       notificationPreferences: seedData.user.notificationPreferences,
     },
     billing: {
@@ -617,6 +620,7 @@ async function saveRemoteWorkspace(data: AppData, userId: string) {
       name: data.user.name,
       builder_type: data.user.builderType,
       plan: data.user.plan,
+      onboarding_forecast_seen: data.user.onboardingForecastSeen,
       updated_at: updatedAt,
     })
     .eq('id', userId)
@@ -1320,7 +1324,7 @@ function App() {
   const completeOnboarding = (project: Project, initialItems: ScopeItem[], builderType: string) => {
     setData((current) => ({
       ...current,
-      user: { ...current.user, builderType },
+      user: { ...current.user, builderType, onboardingForecastSeen: true },
       projects: [...current.projects, project],
       activeProjectId: project.id,
       scopeItems: [...current.scopeItems, ...initialItems],
@@ -1328,6 +1332,31 @@ function App() {
     }))
     setShowOnboarding(false)
     setView('dashboard')
+    if (auth.configured && auth.user && supabase) {
+      supabase
+        .from('profiles')
+        .update({ onboarding_forecast_seen: true, updated_at: new Date().toISOString() })
+        .eq('id', auth.user.id)
+        .then(({ error }) => {
+          if (error) setDataError(error.message)
+        })
+    }
+  }
+
+  const dismissOnboardingForecast = () => {
+    setData((current) => ({
+      ...current,
+      user: { ...current.user, onboardingForecastSeen: true },
+    }))
+    if (auth.configured && auth.user && supabase) {
+      supabase
+        .from('profiles')
+        .update({ onboarding_forecast_seen: true, updated_at: new Date().toISOString() })
+        .eq('id', auth.user.id)
+        .then(({ error }) => {
+          if (error) setDataError(error.message)
+        })
+    }
   }
 
   if (auth.configured && auth.authLoading) {
@@ -1393,11 +1422,24 @@ function App() {
   }
 
   if (showOnboarding || !data.onboarded) {
-    return <OnboardingView onComplete={completeOnboarding} onSkip={() => setShowOnboarding(false)} />
+    return <OnboardingView onboardingForecastSeen={data.user.onboardingForecastSeen} onComplete={completeOnboarding} />
   }
 
   if (isBooting) {
     return <AppSkeleton />
+  }
+
+  if (!data.user.onboardingForecastSeen) {
+    return (
+      <OnboardingForecastReveal
+        availableHoursPerWeek={activeProject.weeklyAvailableHours}
+        daysUntilTarget={getDaysUntil(activeProject.targetLaunchDate)}
+        forecastDate={metrics.forecastDate}
+        launchStatus={metrics.launchStatus}
+        onContinue={dismissOnboardingForecast}
+        totalScopeHours={metrics.shipHours}
+      />
+    )
   }
 
   return (
@@ -3268,12 +3310,87 @@ function SettingsView({
   )
 }
 
-function OnboardingView({
-  onComplete,
-  onSkip,
+function AnimatedRevealDate({ date }: { date: Date }) {
+  const [displayDate, setDisplayDate] = useState(today)
+
+  useEffect(() => {
+    const start = today.getTime()
+    const end = date.getTime()
+    const duration = 800
+    let animationFrame = 0
+    const startedAt = performance.now()
+
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setDisplayDate(new Date(start + (end - start) * eased))
+      if (progress < 1) animationFrame = requestAnimationFrame(tick)
+    }
+
+    animationFrame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animationFrame)
+  }, [date])
+
+  return <>{formatDate(displayDate)}</>
+}
+
+function OnboardingForecastReveal({
+  availableHoursPerWeek,
+  daysUntilTarget,
+  forecastDate,
+  launchStatus,
+  onContinue,
+  totalScopeHours,
 }: {
+  availableHoursPerWeek: number
+  daysUntilTarget: number
+  forecastDate: Date
+  launchStatus: string
+  onContinue: () => void
+  totalScopeHours: number
+}) {
+  return (
+    <main className="onboarding-forecast-page">
+      <section className="onboarding-forecast-panel">
+        <div className="forecast-wordmark">
+          <div className="brand-mark" aria-hidden="true">
+            <Check size={18} strokeWidth={3} />
+          </div>
+          <strong>ShipCheck</strong>
+        </div>
+        <div>
+          <h1>Here's when you're launching.</h1>
+          <p>Based on your scope and availability, here's your forecast.</p>
+        </div>
+        <div className="forecast-date-reveal" aria-live="polite">
+          <AnimatedRevealDate date={forecastDate} />
+        </div>
+        <StatusPill status={launchStatus} />
+        <div className="forecast-reveal-stats">
+          <MetricCard icon={Target} label="Total scope hours" value={`${totalScopeHours}h`} detail="Current Ship scope" />
+          <MetricCard icon={Clock3} label="Available hours per week" value={`${availableHoursPerWeek}h`} detail="Your weekly capacity" />
+          <MetricCard
+            icon={CalendarDays}
+            label="Days until target date"
+            value={`${Math.max(0, daysUntilTarget)}`}
+            detail={daysUntilTarget >= 0 ? 'Target still ahead' : `${Math.abs(daysUntilTarget)} days overdue`}
+          />
+        </div>
+        <button className="button primary forecast-reveal-cta" type="button" onClick={onContinue}>
+          Go to my project
+          <ArrowRight size={16} />
+        </button>
+      </section>
+    </main>
+  )
+}
+
+function OnboardingView({
+  onboardingForecastSeen,
+  onComplete,
+}: {
+  onboardingForecastSeen: boolean
   onComplete: (project: Project, initialItems: ScopeItem[], builderType: string) => void
-  onSkip: () => void
 }) {
   const [reveal, setReveal] = useState<null | { project: Project; items: ScopeItem[]; forecastDate: Date; builderType: string }>(null)
   const [draft, setDraft] = useState({
@@ -3316,29 +3433,27 @@ function OnboardingView({
 
     const totalHours = initialItems.reduce((sum, item) => sum + item.estimateHours, 0)
     const forecastDate = addDays(today, Math.ceil((totalHours / Math.max(project.weeklyAvailableHours, 1)) * 7))
+    if (onboardingForecastSeen) {
+      onComplete(project, initialItems, draft.builderType)
+      return
+    }
     setReveal({ project, items: initialItems, forecastDate, builderType: draft.builderType })
   }
 
   if (reveal) {
+    const totalHours = reveal.items.reduce((sum, item) => sum + item.estimateHours, 0)
+    const driftDays = daysBetween(reveal.project.targetLaunchDate, reveal.forecastDate.toISOString().slice(0, 10))
+    const launchStatus = driftDays <= 0 ? 'On Track' : driftDays <= 14 ? 'At Risk' : 'Slipping'
+
     return (
-      <main className="onboarding-page">
-        <section className="forecast-reveal">
-          <div className="shipped-mark">
-            <CalendarDays size={38} />
-          </div>
-          <span className="eyebrow">Your first forecast</span>
-          <h1>Here is your launch forecast.</h1>
-          <strong>{formatDate(reveal.forecastDate)}</strong>
-          <p>
-            ShipCheck calculated this from {reveal.items.reduce((sum, item) => sum + item.estimateHours, 0)} estimated Ship hours and{' '}
-            {reveal.project.weeklyAvailableHours} available hours per week.
-          </p>
-          <button className="button primary" type="button" onClick={() => onComplete(reveal.project, reveal.items, reveal.builderType)}>
-            Go to my project
-            <ArrowRight size={16} />
-          </button>
-        </section>
-      </main>
+      <OnboardingForecastReveal
+        availableHoursPerWeek={reveal.project.weeklyAvailableHours}
+        daysUntilTarget={getDaysUntil(reveal.project.targetLaunchDate)}
+        forecastDate={reveal.forecastDate}
+        launchStatus={launchStatus}
+        onContinue={() => onComplete(reveal.project, reveal.items, reveal.builderType)}
+        totalScopeHours={totalHours}
+      />
     )
   }
 
@@ -3413,9 +3528,6 @@ function OnboardingView({
           <button className="button primary" type="button" onClick={finish}>
             Create launch tracker
             <ArrowRight size={16} />
-          </button>
-          <button className="button secondary" type="button" onClick={onSkip}>
-            Skip
           </button>
         </div>
       </section>
