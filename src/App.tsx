@@ -530,6 +530,10 @@ function applyWorkspaceStreaks(workspace: AppData): AppData {
   }
 }
 
+function getUserInitial(user: User) {
+  return (user.name.trim()[0] || user.email.trim()[0] || 'S').toUpperCase()
+}
+
 function createBlankProject(name: string, type: ProjectType, weeklyAvailableHours = 10): Project {
   return {
     id: uid('project'),
@@ -849,6 +853,7 @@ function App() {
   const [forecastMovement, setForecastMovement] = useState<ForecastMovement | null>(null)
   const [forecastPulsing, setForecastPulsing] = useState(false)
   const [streakCelebration, setStreakCelebration] = useState(0)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [isBooting, setIsBooting] = useState(true)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
   const [authNotice, setAuthNotice] = useState(() => {
@@ -1464,14 +1469,17 @@ function App() {
     setDataError(null)
   }
 
-  const logOutDemo = () => {
+  const handleLogout = async () => {
     setSidebarOpen(false)
     setQuickLogSheetOpen(false)
+    setUserMenuOpen(false)
     if (auth.configured) {
-      void auth.signOut()
+      await auth.signOut()
+      navigateTo('/')
       return
     }
-    setShowOnboarding(true)
+    setShowOnboarding(false)
+    navigateTo('/')
   }
 
   const completeOnboarding = (project: Project, initialItems: ScopeItem[], builderType: string) => {
@@ -1688,26 +1696,20 @@ function App() {
           <div className="sidebar-card user-card">
             <div className="user-summary">
               <span className="user-avatar" aria-hidden="true">
-                {data.user.name
-                  .split(' ')
-                  .map((part) => part[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase()}
+                {getUserInitial(data.user)}
               </span>
               <div>
-                <strong>{data.user.name}</strong>
-                <p>{data.user.plan} plan</p>
+                <strong>{data.user.name || data.user.email}</strong>
+                <p>{data.user.email}</p>
               </div>
+              <button className="sidebar-logout-button" type="button" onClick={handleLogout} aria-label="Log out">
+                <LogOut size={17} />
+              </button>
             </div>
             <p>Trial started {formatDate(data.user.trialStartedAt)}</p>
             <button className="help-link" type="button" onClick={() => setView('settings')}>
               <Settings size={15} />
               Settings
-            </button>
-            <button className="help-link" type="button" onClick={logOutDemo}>
-              <LogOut size={15} />
-              Log out
             </button>
           </div>
         </div>
@@ -1740,6 +1742,51 @@ function App() {
               <Plus size={16} />
               Quick log
             </button>
+            <div className="user-menu">
+              <button
+                className="user-menu-trigger"
+                type="button"
+                onClick={() => setUserMenuOpen((open) => !open)}
+                aria-expanded={userMenuOpen}
+                aria-haspopup="menu"
+              >
+                <span className="user-avatar" aria-hidden="true">
+                  {getUserInitial(data.user)}
+                </span>
+                <span>{data.user.name || data.user.email}</span>
+              </button>
+              {userMenuOpen && (
+                <div className="user-menu-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setView('settings')
+                      setUserMenuOpen(false)
+                    }}
+                  >
+                    <Settings size={15} />
+                    Settings
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setView('pricing')
+                      setUserMenuOpen(false)
+                    }}
+                  >
+                    <CreditCard size={15} />
+                    Plan & Billing
+                  </button>
+                  <div className="user-menu-divider" />
+                  <button className="danger-menu-item" type="button" role="menuitem" onClick={handleLogout}>
+                    <LogOut size={15} />
+                    Log out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -1889,6 +1936,7 @@ function App() {
             trialExpiryDate={trialExpiryDate}
             setView={setView}
             manageBilling={manageBilling}
+            handleLogout={handleLogout}
           />
         )}
       </main>
@@ -3787,6 +3835,7 @@ function SettingsView({
   trialExpiryDate,
   setView,
   manageBilling,
+  handleLogout,
 }: {
   data: AppData
   project: Project
@@ -3802,9 +3851,12 @@ function SettingsView({
   trialExpiryDate: string
   setView: (view: ViewKey) => void
   manageBilling: () => void
+  handleLogout: () => Promise<void>
 }) {
   const trialing = isFreeTrial(data.user.plan)
   const paidPlan = !trialing && data.user.plan !== 'Free Trial'
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteNotice, setDeleteNotice] = useState('')
 
   return (
     <section className="page-grid">
@@ -4001,6 +4053,50 @@ function SettingsView({
           Reset demo data
         </button>
       </div>
+
+      <div className="section-band session-section">
+        <span className="eyebrow">Session</span>
+        <h2>Account access</h2>
+        <p className="muted">Sign out of this browser when you are finished using ShipCheck.</p>
+        <button className="button logout-outline" type="button" onClick={handleLogout}>
+          <LogOut size={16} />
+          Log out of ShipCheck
+        </button>
+        <button className="delete-account-link" type="button" onClick={() => setDeleteConfirmOpen(true)}>
+          Delete account
+        </button>
+        {deleteNotice && <p className="session-note">{deleteNotice}</p>}
+      </div>
+
+      {deleteConfirmOpen && (
+        <div className="modal-overlay" role="presentation">
+          <section className="modal delete-account-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+            <button className="icon-button modal-close" type="button" aria-label="Close delete account confirmation" onClick={() => setDeleteConfirmOpen(false)}>
+              <X size={16} />
+            </button>
+            <span className="eyebrow">Confirm destructive action</span>
+            <h2 id="delete-account-title">Delete account?</h2>
+            <p>
+              This will permanently remove your ShipCheck account and project data when account deletion is connected. This action should not be used unless you are sure.
+            </p>
+            <div className="button-row">
+              <button className="button secondary" type="button" onClick={() => setDeleteConfirmOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="button danger"
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmOpen(false)
+                  setDeleteNotice('Account deletion is not connected yet. Contact support before public launch.')
+                }}
+              >
+                Confirm delete account
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   )
 }

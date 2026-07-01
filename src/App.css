@@ -1021,6 +1021,72 @@ button:focus-visible {
   font-weight: 700;
 }
 
+.session-section {
+  border-left: 4px solid var(--color-coral);
+}
+
+.session-section h2,
+.session-section p {
+  margin: 0;
+}
+
+.session-section {
+  display: grid;
+  gap: 12px;
+}
+
+.logout-outline {
+  width: max-content;
+  border: 1px solid var(--color-coral);
+  color: var(--color-coral);
+  background: var(--color-white);
+}
+
+.logout-outline:hover {
+  background: #fff1ee;
+}
+
+.delete-account-link {
+  width: max-content;
+  border: 0;
+  padding: 0;
+  color: var(--color-danger);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.delete-account-link:hover {
+  text-decoration: underline;
+}
+
+.session-note {
+  color: var(--color-slate);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.delete-account-modal {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.delete-account-modal h2,
+.delete-account-modal p {
+  margin: 0;
+}
+
+.delete-account-modal p {
+  color: var(--color-slate);
+  font-size: 14px;
+  line-height: 22px;
+}
+
 .team-preview > div {
   display: flex;
   justify-content: space-between;
@@ -1485,7 +1551,7 @@ button:focus-visible {
 
 .user-summary {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
@@ -1514,6 +1580,35 @@ button:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.user-summary p {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.72);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-logout-button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.76);
+  background: transparent;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, transform 100ms ease;
+}
+
+.sidebar-logout-button:hover {
+  color: var(--color-coral);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-logout-button:active {
+  transform: scale(0.96);
 }
 
 .column-meta {
@@ -1565,6 +1660,85 @@ button:focus-visible {
   color: var(--color-slate);
   font-size: 13px;
   font-weight: 700;
+}
+
+.user-menu {
+  position: relative;
+}
+
+.user-menu-trigger {
+  min-height: 40px;
+  max-width: 220px;
+  border: 1px solid var(--color-mist);
+  border-radius: var(--radius-md);
+  padding: 4px 9px 4px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-ink);
+  background: var(--color-white);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.user-menu-trigger span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-trigger .user-avatar {
+  width: 30px;
+  height: 30px;
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 220px;
+  border: 1px solid var(--color-mist);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  background: var(--color-white);
+  box-shadow: 0 14px 32px rgba(24, 32, 31, 0.12);
+  animation: rise-in 0.15s ease-out both;
+}
+
+.user-menu-dropdown button {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-ink);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.user-menu-dropdown button:hover {
+  background: var(--color-cloud);
+}
+
+.user-menu-dropdown .danger-menu-item {
+  color: var(--color-coral);
+}
+
+.user-menu-divider {
+  height: 1px;
+  margin: 6px;
+  background: var(--color-mist);
 }
 
 .project-tabs {
@@ -2897,6 +3071,24 @@ button:focus-visible {
     color: var(--color-white);
     background: var(--color-harbor);
     box-shadow: 0 12px 28px rgba(24, 32, 31, 0.18);
+  }
+
+  .user-menu-trigger {
+    width: 40px;
+    padding: 4px;
+  }
+
+  .user-menu-trigger span:last-child {
+    display: none;
+  }
+
+  .user-menu-dropdown {
+    right: -4px;
+  }
+
+  .logout-outline,
+  .delete-account-link {
+    width: 100%;
   }
 
   .board {
