@@ -1,6 +1,26 @@
 import { useEffect, useState } from 'react'
 import { isSupabaseConfigured, supabase, type AuthSession, type AuthUser } from '../lib/supabase'
 
+const passwordRecoveryKey = 'shipcheck.auth.password-recovery'
+
+function hasRecoveryInUrl() {
+  const search = new URLSearchParams(window.location.search)
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  return search.get('type') === 'recovery' || hash.get('type') === 'recovery'
+}
+
+function readPasswordRecoveryFlag() {
+  return sessionStorage.getItem(passwordRecoveryKey) === 'true' || hasRecoveryInUrl()
+}
+
+function persistPasswordRecoveryFlag() {
+  sessionStorage.setItem(passwordRecoveryKey, 'true')
+}
+
+function clearPasswordRecoveryFlag() {
+  sessionStorage.removeItem(passwordRecoveryKey)
+}
+
 type AuthState = {
   authError: string
   authLoading: boolean
@@ -20,7 +40,7 @@ export function useAuth(): AuthState {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured)
   const [authError, setAuthError] = useState('')
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(readPasswordRecoveryFlag)
 
   useEffect(() => {
     if (!supabase) return
@@ -31,14 +51,20 @@ export function useAuth(): AuthState {
       if (!mounted) return
       if (error) setAuthError(error.message)
       setSession(data.session)
+      if (readPasswordRecoveryFlag()) {
+        persistPasswordRecoveryFlag()
+        setIsPasswordRecovery(true)
+      }
       setAuthLoading(false)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      const recoveryEvent = event === 'PASSWORD_RECOVERY' || readPasswordRecoveryFlag()
+      if (recoveryEvent) persistPasswordRecoveryFlag()
       setSession(nextSession)
-      setIsPasswordRecovery(event === 'PASSWORD_RECOVERY')
+      setIsPasswordRecovery(recoveryEvent)
       setAuthLoading(false)
     })
 
@@ -64,6 +90,7 @@ export function useAuth(): AuthState {
   const signIn = async (email: string, password: string) => {
     if (!supabase) return
     setAuthError('')
+    clearPasswordRecoveryFlag()
     setIsPasswordRecovery(false)
     setAuthLoading(true)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -87,6 +114,7 @@ export function useAuth(): AuthState {
   const signOut = async () => {
     if (!supabase) return
     setAuthError('')
+    clearPasswordRecoveryFlag()
     setIsPasswordRecovery(false)
     await supabase.auth.signOut()
   }
@@ -102,6 +130,7 @@ export function useAuth(): AuthState {
   }
 
   const clearPasswordRecovery = () => {
+    clearPasswordRecoveryFlag()
     setIsPasswordRecovery(false)
   }
 

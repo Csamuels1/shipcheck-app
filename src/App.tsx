@@ -903,6 +903,8 @@ function App() {
   const appEntryPath = data.onboarded ? '/app/dashboard' : '/app/onboarding'
 
   useEffect(() => {
+    if (auth.isPasswordRecovery) return
+
     if (auth.configured && auth.user && !auth.isPasswordRecovery && (currentPath === '/login' || currentPath === '/signup')) {
       window.history.replaceState({}, '', appEntryPath)
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -933,13 +935,13 @@ function App() {
   useEffect(() => {
     if (!auth.configured || auth.authLoading) return
 
-    if (auth.isPasswordRecovery && auth.user && currentPath !== '/reset-password') {
+    if (auth.isPasswordRecovery && currentPath !== '/reset-password') {
       window.history.replaceState({}, '', '/reset-password')
       window.setTimeout(() => setCurrentPath('/reset-password'), 0)
       return
     }
 
-    if (currentPath === '/reset-password' && !auth.isPasswordRecovery) {
+    if (currentPath === '/reset-password' && (!auth.isPasswordRecovery || !auth.user)) {
       const message = 'Request a new password reset link to change your password.'
       sessionStorage.setItem(authNoticeKey, message)
       window.history.replaceState({}, '', '/login')
