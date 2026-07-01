@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Check, CalendarDays, AlertTriangle } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import { PricingView } from './PricingView'
 import './LandingPage.css'
 
@@ -7,12 +9,33 @@ export function LandingPage({
   billingStatus,
   billingPlanLoading,
   isLoggedIn = false,
+  dashboardPath = '/app/dashboard',
 }: {
   onNavigate: (path: string) => void
   billingStatus: string
   billingPlanLoading: string
   isLoggedIn?: boolean
+  dashboardPath?: string
 }) {
+  const [sessionLoggedIn, setSessionLoggedIn] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    if (!supabase) {
+      return
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) setSessionLoggedIn(Boolean(data.session))
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [isLoggedIn])
+
+  const hasSession = sessionLoggedIn ?? isLoggedIn
+
   const scrollToHowItWorks = () => {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -32,25 +55,25 @@ export function LandingPage({
         </div>
         <div className="landing-nav-links">
           <a onClick={scrollToPricing}>Pricing</a>
-          {isLoggedIn ? (
-            <button className="button primary" onClick={() => onNavigate('/dashboard')}>
-              Open App
+          {hasSession ? (
+            <button className="button primary" onClick={() => onNavigate(dashboardPath)}>
+              Go to Dashboard
             </button>
           ) : (
             <>
-              <a onClick={() => onNavigate('/login')}>Log in</a>
+              <a onClick={() => onNavigate('/login')}>Sign In</a>
               <button className="button primary" onClick={() => onNavigate('/signup')}>
-                Sign up free
+                Get Started
               </button>
             </>
           )}
         </div>
       </nav>
 
-      {isLoggedIn && (
+      {hasSession && (
         <div className="landing-return-banner">
           <span>You are logged in.</span>
-          <button type="button" onClick={() => onNavigate('/dashboard')}>
+          <button type="button" onClick={() => onNavigate(dashboardPath)}>
             Go to Dashboard
           </button>
         </div>
@@ -62,8 +85,8 @@ export function LandingPage({
           ShipCheck helps builders and small teams control scope, log real progress, forecast launch dates, and catch scope creep before it becomes burnout.
         </p>
         <div className="landing-cta-group">
-          <button className="button primary" onClick={() => onNavigate(isLoggedIn ? '/dashboard' : '/signup')}>
-            {isLoggedIn ? 'Open App' : 'Start free - no credit card required'}
+          <button className="button primary" onClick={() => onNavigate(hasSession ? dashboardPath : '/signup')}>
+            {hasSession ? 'Go to Dashboard' : 'Get Started Free'}
           </button>
           <button className="button secondary" onClick={scrollToHowItWorks}>
             See how it works
@@ -158,7 +181,7 @@ export function LandingPage({
             // User will provide the actual contact method for Enterprise
             alert('Enterprise contact method to be added')
           } else {
-            onNavigate(isLoggedIn ? '/dashboard' : '/signup')
+            onNavigate(hasSession ? dashboardPath : '/signup')
           }
         }} 
       />
@@ -172,11 +195,11 @@ export function LandingPage({
         </div>
         <div className="landing-footer-links">
           <a onClick={scrollToPricing}>Pricing</a>
-          {isLoggedIn ? (
-            <a onClick={() => onNavigate('/dashboard')}>Open App</a>
+          {hasSession ? (
+            <a onClick={() => onNavigate(dashboardPath)}>Go to Dashboard</a>
           ) : (
             <>
-              <a onClick={() => onNavigate('/login')}>Login</a>
+              <a onClick={() => onNavigate('/login')}>Sign In</a>
               <a onClick={() => onNavigate('/signup')}>Sign Up</a>
             </>
           )}

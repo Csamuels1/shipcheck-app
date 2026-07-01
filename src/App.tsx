@@ -174,6 +174,25 @@ const authNoticeKey = 'shipcheck.auth.notice'
 const trialBannerDismissedKey = 'shipcheck.trial-upgrade.dismissed'
 const creepDismissMs = 24 * 60 * 60 * 1000
 const trialLengthDays = 30
+const appRouteViewMap: Record<string, ViewKey> = {
+  '/app/dashboard': 'dashboard',
+  '/app/projects': 'projects',
+  '/app/scope': 'scope',
+  '/app/logs': 'logs',
+  '/app/reports': 'reports',
+  '/app/pricing': 'pricing',
+  '/app/settings': 'settings',
+}
+
+const appViewPathMap: Partial<Record<ViewKey, string>> = {
+  dashboard: '/app/dashboard',
+  projects: '/app/projects',
+  scope: '/app/scope',
+  logs: '/app/logs',
+  reports: '/app/reports',
+  pricing: '/app/pricing',
+  settings: '/app/settings',
+}
 
 const today = new Date()
 const isoToday = today.toISOString().slice(0, 10)
@@ -881,15 +900,35 @@ function App() {
   }
 
   const legalPage: LegalPageKind | null = currentPath === '/privacy' ? 'privacy' : currentPath === '/terms' ? 'terms' : null
+  const appEntryPath = data.onboarded ? '/app/dashboard' : '/app/onboarding'
 
   useEffect(() => {
     if (auth.configured && auth.user && !auth.isPasswordRecovery && (currentPath === '/login' || currentPath === '/signup')) {
-      window.history.replaceState({}, '', '/dashboard')
+      window.history.replaceState({}, '', appEntryPath)
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCurrentPath('/dashboard')
+      setCurrentPath(appEntryPath)
       setView('dashboard')
     }
-  }, [auth.configured, auth.isPasswordRecovery, auth.user, currentPath])
+  }, [appEntryPath, auth.configured, auth.isPasswordRecovery, auth.user, currentPath])
+
+  useEffect(() => {
+    if (currentPath === '/dashboard') {
+      window.history.replaceState({}, '', '/app/dashboard')
+      window.setTimeout(() => setCurrentPath('/app/dashboard'), 0)
+      return
+    }
+
+    if (auth.user && currentPath === '/app/dashboard' && !data.onboarded) {
+      window.history.replaceState({}, '', '/app/onboarding')
+      window.setTimeout(() => setCurrentPath('/app/onboarding'), 0)
+      return
+    }
+
+    const routeView = appRouteViewMap[currentPath]
+    if (routeView && routeView !== view) {
+      window.setTimeout(() => setView(routeView), 0)
+    }
+  }, [auth.user, currentPath, data.onboarded, view])
 
   useEffect(() => {
     if (!auth.configured || auth.authLoading) return
@@ -1493,6 +1532,7 @@ function App() {
     }))
     setShowOnboarding(false)
     setView('dashboard')
+    navigateTo('/app/dashboard')
     if (auth.configured && auth.user && supabase) {
       supabase
         .from('profiles')
@@ -1553,6 +1593,7 @@ function App() {
         billingStatus={billingStatus} 
         billingPlanLoading={billingPlanLoading}
         isLoggedIn={Boolean(auth.user)}
+        dashboardPath={auth.user ? appEntryPath : '/signup'}
       />
     )
   }
@@ -1588,8 +1629,8 @@ function App() {
     )
   }
 
-  if (showOnboarding || !data.onboarded) {
-    return <OnboardingView onboardingForecastSeen={data.user.onboardingForecastSeen} onComplete={completeOnboarding} />
+  if (showOnboarding || !data.onboarded || currentPath === '/app/onboarding') {
+    return <OnboardingView onboardingForecastSeen={data.user.onboardingForecastSeen} onComplete={completeOnboarding} onLogout={handleLogout} />
   }
 
   if (isBooting) {
@@ -1640,6 +1681,7 @@ function App() {
                 type="button"
                 onClick={() => {
                   setView(item.key as ViewKey)
+                  navigateTo(appViewPathMap[item.key as ViewKey] ?? '/app/dashboard')
                   setSidebarOpen(false)
                 }}
               >
@@ -1659,7 +1701,7 @@ function App() {
               className={project.id === activeProject.id ? 'project-chip active' : 'project-chip'}
               key={project.id}
               type="button"
-              onClick={() => setActiveProjectId(project.id)}
+            onClick={() => setActiveProjectId(project.id)}
             >
               <span>{project.name}</span>
               <StatusPill status={project.status} />
@@ -1686,7 +1728,14 @@ function App() {
               <span className="eyebrow">{isFreeTrial(data.user.plan) ? `Free Trial - ${trialDaysLeft} days left` : 'Solo plan'}</span>
               <strong>{isFreeTrial(data.user.plan) ? 'Keep shipping after trial.' : 'Need teammates?'}</strong>
               <p>{isFreeTrial(data.user.plan) ? 'Upgrade to unlock more active projects.' : 'Upgrade when shared projects and seats matter.'}</p>
-              <button className="upgrade-link" type="button" onClick={() => setView('pricing')}>
+              <button
+                className="upgrade-link"
+                type="button"
+                onClick={() => {
+                  setView('pricing')
+                  navigateTo('/app/pricing')
+                }}
+              >
                 Upgrade Plan
                 <ArrowRight size={14} />
               </button>
@@ -1707,7 +1756,14 @@ function App() {
               </button>
             </div>
             <p>Trial started {formatDate(data.user.trialStartedAt)}</p>
-            <button className="help-link" type="button" onClick={() => setView('settings')}>
+            <button
+              className="help-link"
+              type="button"
+              onClick={() => {
+                setView('settings')
+                navigateTo('/app/settings')
+              }}
+            >
               <Settings size={15} />
               Settings
             </button>
@@ -1738,7 +1794,14 @@ function App() {
           <div className="topbar-actions">
             <StatusPill status={metrics.launchStatus} />
             <span className="forecast-date-mini">{formatDate(metrics.forecastDate)}</span>
-            <button className="button secondary" type="button" onClick={() => setView('logs')}>
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => {
+                setView('logs')
+                navigateTo('/app/logs')
+              }}
+            >
               <Plus size={16} />
               Quick log
             </button>
@@ -1762,6 +1825,7 @@ function App() {
                     role="menuitem"
                     onClick={() => {
                       setView('settings')
+                      navigateTo('/app/settings')
                       setUserMenuOpen(false)
                     }}
                   >
@@ -1773,6 +1837,7 @@ function App() {
                     role="menuitem"
                     onClick={() => {
                       setView('pricing')
+                      navigateTo('/app/pricing')
                       setUserMenuOpen(false)
                     }}
                   >
@@ -1798,7 +1863,15 @@ function App() {
             { key: 'reports', label: 'Reports' },
             { key: 'settings', label: 'Settings' },
           ].map((item) => (
-            <button key={item.key} className={view === item.key ? 'active' : ''} type="button" onClick={() => setView(item.key as ViewKey)}>
+            <button
+              key={item.key}
+              className={view === item.key ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setView(item.key as ViewKey)
+                navigateTo(appViewPathMap[item.key as ViewKey] ?? '/app/dashboard')
+              }}
+            >
               {item.label}
             </button>
           ))}
@@ -2159,7 +2232,7 @@ function LegalPage({
   return (
     <main className="legal-page">
       <nav className="legal-nav">
-        <button className="brand legal-brand" type="button" onClick={() => onNavigate(loggedIn ? '/dashboard' : '/')}>
+        <button className="brand legal-brand" type="button" onClick={() => onNavigate(loggedIn ? '/app/dashboard' : '/')}>
           <span className="brand-mark" aria-hidden="true">
             <Check size={18} strokeWidth={3} />
           </span>
@@ -2167,7 +2240,7 @@ function LegalPage({
         </button>
         <div>
           {loggedIn ? (
-            <button className="button secondary" type="button" onClick={() => onNavigate('/dashboard')}>
+            <button className="button secondary" type="button" onClick={() => onNavigate('/app/dashboard')}>
               Back to app
             </button>
           ) : (
@@ -4179,9 +4252,11 @@ function OnboardingForecastReveal({
 function OnboardingView({
   onboardingForecastSeen,
   onComplete,
+  onLogout,
 }: {
   onboardingForecastSeen: boolean
   onComplete: (project: Project, initialItems: ScopeItem[], builderType: string) => void
+  onLogout: () => Promise<void>
 }) {
   const [reveal, setReveal] = useState<null | { project: Project; items: ScopeItem[]; forecastDate: Date; builderType: string }>(null)
   const [draft, setDraft] = useState({
@@ -4250,6 +4325,9 @@ function OnboardingView({
 
   return (
     <main className="onboarding-page">
+      <button className="onboarding-logout" type="button" onClick={onLogout}>
+        Log out
+      </button>
       <section className="onboarding-panel">
         <div className="brand onboarding-brand">
           <div className="brand-mark" aria-hidden="true">
