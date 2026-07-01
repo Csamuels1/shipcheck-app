@@ -6,12 +6,13 @@ type AuthViewProps = {
   authError: string
   authLoading: boolean
   notice?: string
+  onNavigate?: (path: string) => void
   onResetPassword: (email: string) => Promise<void>
   onSignIn: (email: string, password: string) => Promise<void>
   onSignUp: (name: string, email: string, password: string) => Promise<void>
 }
 
-export function AuthView({ initialMode = 'signup', authError, authLoading, notice = '', onResetPassword, onSignIn, onSignUp }: AuthViewProps) {
+export function AuthView({ initialMode = 'signup', authError, authLoading, notice = '', onNavigate, onResetPassword, onSignIn, onSignUp }: AuthViewProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -196,6 +197,14 @@ export function AuthView({ initialMode = 'signup', authError, authLoading, notic
             )}
           </>
         )}
+        <div className="auth-legal-links">
+          <button type="button" onClick={() => onNavigate?.('/privacy')}>
+            Privacy
+          </button>
+          <button type="button" onClick={() => onNavigate?.('/terms')}>
+            Terms
+          </button>
+        </div>
       </section>
     </main>
   )

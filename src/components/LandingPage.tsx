@@ -133,6 +133,7 @@ export function LandingPage({
         activePlan="Free Trial" 
         billingStatus={billingStatus} 
         billingPlanLoading={billingPlanLoading} 
+        onNavigate={onNavigate}
         startCheckout={(plan) => {
           if (plan === 'Enterprise') {
             // User will provide the actual contact method for Enterprise
@@ -154,8 +155,8 @@ export function LandingPage({
           <a onClick={scrollToPricing}>Pricing</a>
           <a onClick={() => onNavigate('/login')}>Login</a>
           <a onClick={() => onNavigate('/signup')}>Sign Up</a>
-          <a href="#">Privacy</a>
-          <a href="#">Terms</a>
+          <a onClick={() => onNavigate('/privacy')}>Privacy</a>
+          <a onClick={() => onNavigate('/terms')}>Terms</a>
         </div>
         <p>Made for builders who ship.</p>
       </footer>

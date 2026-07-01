@@ -15,6 +15,7 @@ import {
   CreditCard,
   Download,
   Edit3,
+  Flame,
   GripVertical,
   HelpCircle,
   FileText,
@@ -48,6 +49,7 @@ type Confidence = 'low' | 'medium' | 'high'
 type ProjectStatus = 'Planning' | 'Building' | 'Paused' | 'Shipped' | 'Archived'
 type ProjectType = 'MVP/Product' | 'Client Project' | 'Internal Project' | 'Creator Project' | 'Other'
 type ViewKey = 'dashboard' | 'projects' | 'scope' | 'logs' | 'reports' | 'pricing' | 'settings' | 'shipped'
+type LegalPageKind = 'privacy' | 'terms'
 
 type User = {
   name: string
@@ -81,6 +83,8 @@ type Project = {
   weeklyAvailableHours: number
   baselineLockedAt: string
   teamSize: number
+  currentStreak: number
+  longestStreak: number
 }
 
 type ScopeItem = {
@@ -241,6 +245,8 @@ const seedData: AppData = {
       weeklyAvailableHours: 18,
       baselineLockedAt: '2026-05-20',
       teamSize: 1,
+      currentStreak: 0,
+      longestStreak: 0,
     },
     {
       id: 'project-2',
@@ -253,6 +259,8 @@ const seedData: AppData = {
       weeklyAvailableHours: 10,
       baselineLockedAt: isoToday,
       teamSize: 3,
+      currentStreak: 0,
+      longestStreak: 0,
     },
   ],
   scopeItems: [
@@ -366,12 +374,12 @@ const seedData: AppData = {
 
 function loadData(): AppData {
   const stored = localStorage.getItem(storageKey)
-  if (!stored) return seedData
+  if (!stored) return applyWorkspaceStreaks(seedData)
 
   try {
     const parsed = JSON.parse(stored) as Partial<AppData> & { project?: Project }
     if (parsed.projects && parsed.activeProjectId) {
-      return {
+      return applyWorkspaceStreaks({
         ...seedData,
         ...parsed,
         user: {
@@ -383,6 +391,11 @@ function loadData(): AppData {
           ...seedData.billing,
           ...parsed.billing,
         },
+        projects: (parsed.projects ?? seedData.projects).map((project) => ({
+          ...project,
+          currentStreak: project.currentStreak ?? 0,
+          longestStreak: project.longestStreak ?? 0,
+        })),
         scopeItems: (parsed.scopeItems ?? []).map((item) => ({
           ...item,
           projectId: item.projectId ?? parsed.activeProjectId ?? seedData.activeProjectId,
@@ -396,11 +409,11 @@ function loadData(): AppData {
           projectId: log.projectId ?? parsed.activeProjectId ?? seedData.activeProjectId,
           newScopeAdded: log.newScopeAdded ?? false,
         })),
-      } as AppData
+      } as AppData)
     }
 
     if (parsed.project) {
-      return {
+      return applyWorkspaceStreaks({
         user: {
           ...seedData.user,
           ...parsed.user,
@@ -410,7 +423,7 @@ function loadData(): AppData {
           ...seedData.billing,
           ...parsed.billing,
         },
-        projects: [parsed.project],
+        projects: [{ ...parsed.project, currentStreak: parsed.project.currentStreak ?? 0, longestStreak: parsed.project.longestStreak ?? 0 }],
         activeProjectId: parsed.project.id,
         scopeItems: (parsed.scopeItems ?? []).map((item) => ({
           ...item,
@@ -422,13 +435,13 @@ function loadData(): AppData {
         })),
         logs: (parsed.logs ?? []).map((log) => ({ ...log, projectId: parsed.project?.id ?? 'project-1', newScopeAdded: log.newScopeAdded ?? false })),
         onboarded: true,
-      }
+      })
     }
 
-    return seedData
+    return applyWorkspaceStreaks(seedData)
   } catch {
     localStorage.setItem(loadErrorKey, 'ShipCheck could not read saved workspace data, so it loaded the demo workspace.')
-    return seedData
+    return applyWorkspaceStreaks(seedData)
   }
 }
 
@@ -483,6 +496,40 @@ function getCreepDismissKey(projectId: string) {
   return `shipcheck.scope-creep.dismissed-until.${projectId}`
 }
 
+function calculateProjectStreak(projectId: string, logs: BuildLog[]) {
+  const logDates = Array.from(new Set(logs.filter((log) => log.projectId === projectId).map((log) => log.logDate))).sort((a, b) => b.localeCompare(a))
+  if (logDates.length === 0) return 0
+
+  const latestLogDate = logDates[0]
+  const yesterday = addDays(today, -1).toISOString().slice(0, 10)
+  if (latestLogDate !== isoToday && latestLogDate !== yesterday) return 0
+
+  const dateSet = new Set(logDates)
+  let streak = 0
+  let cursor = latestLogDate
+  while (dateSet.has(cursor)) {
+    streak += 1
+    cursor = addDays(new Date(`${cursor}T00:00:00`), -1).toISOString().slice(0, 10)
+  }
+  return streak
+}
+
+function applyProjectStreak(project: Project, logs: BuildLog[]) {
+  const currentStreak = calculateProjectStreak(project.id, logs)
+  return {
+    ...project,
+    currentStreak,
+    longestStreak: Math.max(project.longestStreak, currentStreak),
+  }
+}
+
+function applyWorkspaceStreaks(workspace: AppData): AppData {
+  return {
+    ...workspace,
+    projects: workspace.projects.map((project) => applyProjectStreak(project, workspace.logs)),
+  }
+}
+
 function createBlankProject(name: string, type: ProjectType, weeklyAvailableHours = 10): Project {
   return {
     id: uid('project'),
@@ -495,6 +542,8 @@ function createBlankProject(name: string, type: ProjectType, weeklyAvailableHour
     weeklyAvailableHours,
     baselineLockedAt: isoToday,
     teamSize: 1,
+    currentStreak: 0,
+    longestStreak: 0,
   }
 }
 
@@ -534,6 +583,8 @@ function mapProjectFromDb(row: Record<string, unknown>): Project {
     weeklyAvailableHours: Number(row.weekly_available_hours ?? 10),
     baselineLockedAt: String(row.baseline_locked_at ?? isoToday),
     teamSize: Number(row.team_size ?? 1),
+    currentStreak: Number(row.current_streak ?? 0),
+    longestStreak: Number(row.longest_streak ?? 0),
   }
 }
 
@@ -675,6 +726,8 @@ async function saveRemoteWorkspace(data: AppData, userId: string) {
     weekly_available_hours: project.weeklyAvailableHours,
     baseline_locked_at: project.baselineLockedAt,
     team_size: project.teamSize,
+    current_streak: project.currentStreak,
+    longest_streak: project.longestStreak,
     updated_at: updatedAt,
   }))
 
@@ -795,6 +848,7 @@ function App() {
   const [logSaved, setLogSaved] = useState(false)
   const [forecastMovement, setForecastMovement] = useState<ForecastMovement | null>(null)
   const [forecastPulsing, setForecastPulsing] = useState(false)
+  const [streakCelebration, setStreakCelebration] = useState(0)
   const [isBooting, setIsBooting] = useState(true)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
   const [authNotice, setAuthNotice] = useState(() => {
@@ -820,6 +874,8 @@ function App() {
     window.history.replaceState({}, '', '/login')
     setCurrentPath('/login')
   }
+
+  const legalPage: LegalPageKind | null = currentPath === '/privacy' ? 'privacy' : currentPath === '/terms' ? 'terms' : null
 
   useEffect(() => {
     if (auth.configured && auth.user && !auth.isPasswordRecovery && (currentPath === '/' || currentPath === '/login' || currentPath === '/signup')) {
@@ -906,7 +962,7 @@ function App() {
       loadRemoteWorkspace(auth.user!)
       .then((remoteData) => {
         if (cancelled) return
-        setData(remoteData)
+        setData(applyWorkspaceStreaks(remoteData))
         setShowOnboarding(!remoteData.onboarded)
         setDataError(null)
       })
@@ -1217,7 +1273,17 @@ function App() {
       setForecastMovement(null)
     }
 
-    setData((current) => ({ ...current, logs: [log, ...current.logs] }))
+    const nextActiveProject = applyProjectStreak(activeProject, [log, ...activeLogs])
+    if ([7, 30, 100].includes(nextActiveProject.currentStreak) && nextActiveProject.currentStreak !== activeProject.currentStreak) {
+      setStreakCelebration(nextActiveProject.currentStreak)
+      window.setTimeout(() => setStreakCelebration(0), 1500)
+    }
+
+    setData((current) => {
+      const nextLogs = [log, ...current.logs]
+      const nextProjects = current.projects.map((project) => (project.id === activeProject.id ? applyProjectStreak(project, nextLogs) : project))
+      return { ...current, projects: nextProjects, logs: nextLogs }
+    })
     setLogDraft({ logDate: isoToday, hours: 1, summary: '', blockers: '', scopeItemId: '', newScopeAdded: false })
     setLogFormError('')
     setLogSaved(true)
@@ -1230,7 +1296,14 @@ function App() {
       void supabase.from('build_logs').delete().eq('id', id)
     }
 
-    setData((current) => ({ ...current, logs: current.logs.filter((log) => log.id !== id) }))
+    setData((current) => {
+      const removedLog = current.logs.find((log) => log.id === id)
+      const nextLogs = current.logs.filter((log) => log.id !== id)
+      const nextProjects = removedLog
+        ? current.projects.map((project) => (project.id === removedLog.projectId ? applyProjectStreak(project, nextLogs) : project))
+        : current.projects
+      return { ...current, projects: nextProjects, logs: nextLogs }
+    })
   }
 
   const startEditBuildLog = (log: BuildLog) => {
@@ -1247,9 +1320,9 @@ function App() {
 
   const saveEditedBuildLog = () => {
     if (!editingLogId || !editingLogDraft.summary.trim()) return
-    setData((current) => ({
-      ...current,
-      logs: current.logs.map((log) =>
+    setData((current) => {
+      const existingLog = current.logs.find((log) => log.id === editingLogId)
+      const nextLogs = current.logs.map((log) =>
         log.id === editingLogId
           ? {
               ...log,
@@ -1261,8 +1334,12 @@ function App() {
               newScopeAdded: editingLogDraft.newScopeAdded,
             }
           : log,
-      ),
-    }))
+      )
+      const nextProjects = existingLog
+        ? current.projects.map((project) => (project.id === existingLog.projectId ? applyProjectStreak(project, nextLogs) : project))
+        : current.projects
+      return { ...current, projects: nextProjects, logs: nextLogs }
+    })
     setEditingLogId(null)
   }
 
@@ -1439,6 +1516,10 @@ function App() {
     return <AppSkeleton />
   }
 
+  if (legalPage) {
+    return <LegalPage loggedIn={Boolean(auth.user)} onNavigate={navigateTo} page={legalPage} />
+  }
+
   if (currentPath === '/reset-password' && auth.isPasswordRecovery && auth.user) {
     return (
       <ResetPasswordView
@@ -1477,6 +1558,7 @@ function App() {
           authError="Supabase not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment variables."
           authLoading={false}
           notice={currentPath === '/login' ? authNotice : ''}
+          onNavigate={navigateTo}
           onResetPassword={async () => {}}
           onSignIn={async () => {}}
           onSignUp={async () => {}}
@@ -1490,6 +1572,7 @@ function App() {
         authError={auth.authError}
         authLoading={auth.authLoading}
         notice={currentPath === '/login' ? authNotice : ''}
+        onNavigate={navigateTo}
         onResetPassword={auth.resetPassword}
         onSignIn={auth.signIn}
         onSignUp={auth.signUp}
@@ -1582,6 +1665,12 @@ function App() {
               <HelpCircle size={15} />
               Help / Docs
             </button>
+            <button className="help-link" type="button" onClick={() => navigateTo('/privacy')}>
+              Privacy
+            </button>
+            <button className="help-link" type="button" onClick={() => navigateTo('/terms')}>
+              Terms
+            </button>
           </div>
 
           {showsUpgradePrompt(data.user.plan) && (
@@ -1635,6 +1724,7 @@ function App() {
             }}
           />
         )}
+        <StreakCelebration streak={streakCelebration} />
 
         <header className="topbar">
           <button className="icon-button mobile-menu" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
@@ -1726,6 +1816,7 @@ function App() {
 
         {view === 'logs' && (
           <LogsView
+            project={activeProject}
             logs={activeLogs}
             items={activeScopeItems}
             draft={logDraft}
@@ -1778,6 +1869,7 @@ function App() {
             billingStatus={billingStatus}
             billingPlanLoading={billingPlanLoading}
             startCheckout={startBillingCheckout}
+            onNavigate={navigateTo}
           />
         )}
 
@@ -1899,6 +1991,162 @@ function ForecastMovementIndicator({ movement }: { movement: ForecastMovement | 
       <Icon size={16} />
       <span>{improved ? `+${movement.days} days sooner` : `${movement.days} days later`}</span>
     </div>
+  )
+}
+
+function StreakPill({ streak }: { streak: number }) {
+  if (streak < 3) return null
+  return (
+    <span className="streak-pill">
+      <Flame size={14} />
+      {streak}-day streak
+    </span>
+  )
+}
+
+function StreakCelebration({ streak }: { streak: number }) {
+  if (!streak) return null
+  return (
+    <div className="streak-celebration" role="status" aria-live="polite">
+      <div className="confetti-burst" aria-hidden="true">
+        {Array.from({ length: 14 }).map((_, index) => (
+          <span key={index} />
+        ))}
+      </div>
+      <strong>{streak}-day streak - you're building momentum.</strong>
+    </div>
+  )
+}
+
+function LegalPage({
+  page,
+  loggedIn,
+  onNavigate,
+}: {
+  page: LegalPageKind
+  loggedIn: boolean
+  onNavigate: (path: string) => void
+}) {
+  const isPrivacy = page === 'privacy'
+  const title = isPrivacy ? 'Privacy Policy' : 'Terms of Service'
+  const sections = isPrivacy
+    ? [
+        {
+          title: 'Information we collect',
+          body:
+            'ShipCheck may collect account details, project information, scope items, build logs, billing status, and basic usage data needed to operate the product.',
+        },
+        {
+          title: 'How we use information',
+          body:
+            'We use your information to provide launch forecasts, save your workspace, send account and product emails, process billing, improve reliability, and support your requests.',
+        },
+        {
+          title: 'Cookies and local storage',
+          body:
+            'ShipCheck may use cookies, browser storage, and similar technologies to keep you signed in, remember dismissals, protect sessions, and improve the app experience.',
+        },
+        {
+          title: 'Third-party services',
+          body:
+            'ShipCheck uses service providers including Supabase for authentication and data storage, Creem for billing, Resend for email delivery, and Vercel for hosting and deployment.',
+        },
+        {
+          title: 'Data retention',
+          body:
+            'We keep account and project data while your account is active or as needed for product, legal, billing, and security purposes. You may request deletion before public launch.',
+        },
+        {
+          title: 'Your rights',
+          body:
+            'You may request access, correction, export, or deletion of your personal data, subject to legal and operational limits that may apply to SaaS services.',
+        },
+        {
+          title: 'Contact',
+          body: 'For privacy questions, contact the ShipCheck team at privacy@shipcheck.app.',
+        },
+      ]
+    : [
+        {
+          title: 'Acceptance of terms',
+          body:
+            'By creating an account or using ShipCheck, you agree to these terms and to use the product only for lawful project planning and launch accountability purposes.',
+        },
+        {
+          title: 'Accounts and security',
+          body:
+            'You are responsible for keeping your login credentials secure, using accurate account information, and notifying us if you believe your account has been accessed without permission.',
+        },
+        {
+          title: 'Project data',
+          body:
+            'You retain responsibility for the project content, scope items, build logs, and team information you add to ShipCheck. Do not upload data you are not allowed to store or process.',
+        },
+        {
+          title: 'Billing',
+          body:
+            'Paid plans are processed through Creem. Prices, plan limits, billing intervals, and renewal terms will be shown before checkout and may be updated before public launch.',
+        },
+        {
+          title: 'Acceptable use',
+          body:
+            'Do not misuse ShipCheck, interfere with the service, attempt unauthorized access, upload malicious content, or use the product to violate laws or third-party rights.',
+        },
+        {
+          title: 'Availability and beta status',
+          body:
+            'ShipCheck is still pre-launch software. Features may change, availability may vary, and placeholder legal terms will be reviewed before public launch.',
+        },
+        {
+          title: 'Limitations',
+          body:
+            'ShipCheck provides planning and forecasting tools, not guarantees of launch dates, revenue, delivery outcomes, or business success.',
+        },
+        {
+          title: 'Contact',
+          body: 'For terms or account questions, contact the ShipCheck team at support@shipcheck.app.',
+        },
+      ]
+
+  return (
+    <main className="legal-page">
+      <nav className="legal-nav">
+        <button className="brand legal-brand" type="button" onClick={() => onNavigate(loggedIn ? '/dashboard' : '/')}>
+          <span className="brand-mark" aria-hidden="true">
+            <Check size={18} strokeWidth={3} />
+          </span>
+          <strong>ShipCheck</strong>
+        </button>
+        <div>
+          {loggedIn ? (
+            <button className="button secondary" type="button" onClick={() => onNavigate('/dashboard')}>
+              Back to app
+            </button>
+          ) : (
+            <>
+              <button className="button secondary" type="button" onClick={() => onNavigate('/login')}>
+                Log in
+              </button>
+              <button className="button primary" type="button" onClick={() => onNavigate('/signup')}>
+                Sign up
+              </button>
+            </>
+          )}
+        </div>
+      </nav>
+
+      <article className="legal-document">
+        <span className="eyebrow">Trust and legal</span>
+        <h1>{title}</h1>
+        <p className="legal-updated">Last updated: July 1, 2026. This policy will be updated before public launch.</p>
+        {sections.map((section) => (
+          <section key={section.title}>
+            <h2>{section.title}</h2>
+            <p>{section.body}</p>
+          </section>
+        ))}
+      </article>
+    </main>
   )
 }
 
@@ -2368,6 +2616,13 @@ function Dashboard({
           <button className="icon-button" type="button" aria-label="Dismiss trial upgrade prompt" onClick={dismissTrialUpgradeBanner}>
             <X size={16} />
           </button>
+        </div>
+      )}
+
+      {project.currentStreak >= 3 && (
+        <div className="overview-streak-row">
+          <StreakPill streak={project.currentStreak} />
+          <span>Longest streak: {project.longestStreak} days</span>
         </div>
       )}
 
@@ -2871,6 +3126,7 @@ function ScopeView({
 }
 
 function LogsView({
+  project,
   logs,
   items,
   draft,
@@ -2888,6 +3144,7 @@ function LogsView({
   saveEdit,
   cancelEdit,
 }: {
+  project: Project
   logs: BuildLog[]
   items: ScopeItem[]
   draft: { logDate: string; hours: number; summary: string; blockers: string; scopeItemId: string; newScopeAdded: boolean }
@@ -2977,6 +3234,7 @@ function LogsView({
             <span className="eyebrow">History</span>
             <h2>Recent build logs</h2>
           </div>
+          <StreakPill streak={project.currentStreak} />
         </div>
         {logs.length === 0 && (
           <EmptyState

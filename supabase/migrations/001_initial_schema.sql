@@ -51,6 +51,8 @@ create table if not exists public.projects (
   weekly_available_hours numeric not null default 10,
   baseline_locked_at date not null default current_date,
   team_size integer not null default 1,
+  current_streak integer not null default 0,
+  longest_streak integer not null default 0,
   shipped_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

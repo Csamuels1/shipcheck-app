@@ -4,12 +4,14 @@ export function PricingView({
   activePlan,
   billingStatus,
   billingPlanLoading,
+  onNavigate,
   startCheckout,
   isPublic = false,
 }: {
   activePlan: string
   billingStatus: string
   billingPlanLoading: string
+  onNavigate?: (path: string) => void
   startCheckout: (plan: string) => void
   isPublic?: boolean
 }) {
@@ -51,6 +53,14 @@ export function PricingView({
             </button>
           </article>
         ))}
+      </div>
+      <div className="pricing-legal-links">
+        <button type="button" onClick={() => onNavigate?.('/privacy')}>
+          Privacy
+        </button>
+        <button type="button" onClick={() => onNavigate?.('/terms')}>
+          Terms
+        </button>
       </div>
     </section>
   )
