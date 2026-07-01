@@ -3,7 +3,9 @@ import {
   Activity,
   AlertTriangle,
   Archive,
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   BarChart3,
   CalendarDays,
   Check,
@@ -125,6 +127,11 @@ type AppData = {
   onboarded: boolean
 }
 
+type ForecastMovement = {
+  direction: 'improved' | 'worsened'
+  days: number
+}
+
 type ShipMetrics = {
   shipItems: ScopeItem[]
   laterItems: ScopeItem[]
@@ -161,6 +168,7 @@ const storageKey = 'shipcheck.mvp.data.v1'
 const loadErrorKey = 'shipcheck.mvp.load-error'
 const authNoticeKey = 'shipcheck.auth.notice'
 const trialBannerDismissedKey = 'shipcheck.trial-upgrade.dismissed'
+const creepDismissMs = 24 * 60 * 60 * 1000
 const trialLengthDays = 30
 
 const today = new Date()
@@ -471,6 +479,10 @@ function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+function getCreepDismissKey(projectId: string) {
+  return `shipcheck.scope-creep.dismissed-until.${projectId}`
+}
+
 function createBlankProject(name: string, type: ProjectType, weeklyAvailableHours = 10): Project {
   return {
     id: uid('project'),
@@ -484,6 +496,30 @@ function createBlankProject(name: string, type: ProjectType, weeklyAvailableHour
     baselineLockedAt: isoToday,
     teamSize: 1,
   }
+}
+
+function calculateForecastDate(project: Project, scopeItems: ScopeItem[], logs: BuildLog[]) {
+  const shipItems = scopeItems.filter((item) => item.projectId === project.id && item.column === 'ship')
+  const remainingShipHours = shipItems
+    .filter((item) => item.status !== 'done')
+    .reduce((sum, item) => sum + item.estimateHours, 0)
+  const completedShipHours = shipItems
+    .filter((item) => item.status === 'done')
+    .reduce((sum, item) => sum + item.estimateHours, 0)
+  const projectLogs = logs.filter((log) => log.projectId === project.id)
+  const loggedHours = projectLogs.reduce((sum, log) => sum + log.minutesSpent / 60, 0)
+  const activeDays = Math.max(1, daysBetween(project.startDate, isoToday) + 1)
+  const activeWeeks = Math.max(activeDays / 7, 1)
+  const loggedVelocity = loggedHours / activeWeeks
+  const completionVelocity = completedShipHours > 0 ? completedShipHours / activeWeeks : 0
+  const velocity =
+    completionVelocity > 0
+      ? completionVelocity
+      : loggedVelocity > 0
+        ? loggedVelocity
+        : project.weeklyAvailableHours
+  const forecastDays = remainingShipHours === 0 ? 0 : Math.ceil((remainingShipHours / Math.max(velocity, 1)) * 7)
+  return addDays(today, forecastDays)
 }
 
 function mapProjectFromDb(row: Record<string, unknown>): Project {
@@ -742,10 +778,22 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [quickLogSheetOpen, setQuickLogSheetOpen] = useState(false)
-  const [dismissedCreepBanner, setDismissedCreepBanner] = useState(false)
+  const [creepDismissedUntilByProject, setCreepDismissedUntilByProject] = useState<Record<string, number>>(() => {
+    const dismissals: Record<string, number> = {}
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key?.startsWith('shipcheck.scope-creep.dismissed-until.')) continue
+      const projectId = key.replace('shipcheck.scope-creep.dismissed-until.', '')
+      const until = Number(localStorage.getItem(key) || 0)
+      if (projectId && Number.isFinite(until)) dismissals[projectId] = until
+    }
+    return dismissals
+  })
+  const [currentTime, setCurrentTime] = useState(() => Date.now())
   const [dismissedTrialBanner, setDismissedTrialBanner] = useState(() => sessionStorage.getItem(trialBannerDismissedKey) === 'true')
   const [upgradeModalReason, setUpgradeModalReason] = useState('')
   const [logSaved, setLogSaved] = useState(false)
+  const [forecastMovement, setForecastMovement] = useState<ForecastMovement | null>(null)
   const [isBooting, setIsBooting] = useState(true)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
   const [authNotice, setAuthNotice] = useState(() => {
@@ -920,9 +968,7 @@ function App() {
     const activeWeeks = Math.max(activeDays / 7, 1)
     const loggedVelocity = loggedHours / activeWeeks
     const completionVelocity = completedShipHours > 0 ? completedShipHours / activeWeeks : 0
-    const velocity = completionVelocity > 0 ? completionVelocity : activeProject.weeklyAvailableHours
-    const forecastDays = remainingShipHours === 0 ? 0 : Math.ceil((remainingShipHours / Math.max(velocity, 1)) * 7)
-    const forecastDate = addDays(today, forecastDays)
+    const forecastDate = calculateForecastDate(activeProject, activeScopeItems, activeLogs)
     const driftDays = daysBetween(activeProject.targetLaunchDate, forecastDate.toISOString().slice(0, 10))
     const launchStatus =
       remainingShipHours === 0 ? 'Ready' : driftDays <= 0 ? 'On Track' : driftDays <= 14 ? 'At Risk' : 'Slipping'
@@ -934,7 +980,8 @@ function App() {
     const currentScopeHours = activeScopeItems.reduce((sum, item) => sum + item.estimateHours, 0)
     const scopeGrowthPercent =
       baselineScopeHours > 0 ? Math.round(((currentScopeHours - baselineScopeHours) / baselineScopeHours) * 100) : 0
-    const forecastImpactDays = activeProject.weeklyAvailableHours > 0 ? Math.ceil((addedHours / activeProject.weeklyAvailableHours) * 7) : 0
+    const scopeGrowthHours = Math.max(0, currentScopeHours - baselineScopeHours)
+    const forecastImpactDays = activeProject.weeklyAvailableHours > 0 ? Math.ceil((scopeGrowthHours / activeProject.weeklyAvailableHours) * 7) : 0
     const weekLogs = activeLogs.filter((log) => daysBetween(log.logDate, isoToday) <= 7)
     const weekHours = weekLogs.reduce((sum, log) => sum + log.minutesSpent / 60, 0)
     const priorWeekLogs = activeLogs.filter((log) => {
@@ -1001,10 +1048,21 @@ function App() {
   const trialDaysLeft = getTrialDaysLeft(data.user.trialStartedAt)
   const trialExpiryDate = getTrialExpiryDate(data.user.trialStartedAt)
   const showTrialUpgradeBanner = isFreeTrial(data.user.plan) && trialDaysLeft <= 5 && !dismissedTrialBanner
+  const scopeGrowthHours = Math.max(0, metrics.currentScopeHours - metrics.baselineScopeHours)
+  const creepDismissedUntil = creepDismissedUntilByProject[activeProject.id] ?? 0
+  const showScopeCreepBanner = scopeGrowthHours > 0 && currentTime > creepDismissedUntil
+  const scopeCreepTone = metrics.scopeGrowthPercent > 0 && metrics.scopeGrowthPercent < 10 ? 'warning' : 'danger'
 
   const dismissTrialUpgradeBanner = () => {
     sessionStorage.setItem(trialBannerDismissedKey, 'true')
     setDismissedTrialBanner(true)
+  }
+
+  const dismissScopeCreepBanner = () => {
+    const dismissedUntil = Date.now() + creepDismissMs
+    localStorage.setItem(getCreepDismissKey(activeProject.id), String(dismissedUntil))
+    setCurrentTime(Date.now())
+    setCreepDismissedUntilByProject((current) => ({ ...current, [activeProject.id]: dismissedUntil }))
   }
 
   const setProject = (project: Partial<Project>) => {
@@ -1129,6 +1187,7 @@ function App() {
       setLogFormError('Add a short summary so ShipCheck can update the project forecast.')
       return
     }
+    const forecastBefore = calculateForecastDate(activeProject, activeScopeItems, activeLogs)
 
     const log: BuildLog = {
       id: uid('log'),
@@ -1142,11 +1201,22 @@ function App() {
       createdAt: isoToday,
     }
 
+    const forecastAfter = calculateForecastDate(activeProject, activeScopeItems, [log, ...activeLogs])
+    const movementDays = daysBetween(forecastBefore.toISOString().slice(0, 10), forecastAfter.toISOString().slice(0, 10))
+    if (movementDays < 0) {
+      setForecastMovement({ direction: 'improved', days: Math.abs(movementDays) })
+    } else if (movementDays > 0) {
+      setForecastMovement({ direction: 'worsened', days: movementDays })
+    } else {
+      setForecastMovement(null)
+    }
+
     setData((current) => ({ ...current, logs: [log, ...current.logs] }))
     setLogDraft({ logDate: isoToday, hours: 1, summary: '', blockers: '', scopeItemId: '', newScopeAdded: false })
     setLogFormError('')
     setLogSaved(true)
     window.setTimeout(() => setLogSaved(false), 1500)
+    window.setTimeout(() => setForecastMovement(null), 4000)
   }
 
   const deleteBuildLog = (id: string) => {
@@ -1606,8 +1676,9 @@ function App() {
             createProject={createProject}
             projectFormError={projectFormError}
             clearProjectFormError={() => setProjectFormError('')}
-            dismissedCreepBanner={dismissedCreepBanner}
-            dismissCreepBanner={() => setDismissedCreepBanner(true)}
+            showScopeCreepBanner={showScopeCreepBanner}
+            scopeCreepTone={scopeCreepTone}
+            dismissCreepBanner={dismissScopeCreepBanner}
             showTrialUpgradeBanner={showTrialUpgradeBanner}
             trialDaysLeft={trialDaysLeft}
             dismissTrialUpgradeBanner={dismissTrialUpgradeBanner}
@@ -1640,8 +1711,9 @@ function App() {
             rankItem={rankScopeItem}
             deleteItem={deleteScopeItem}
             metrics={metrics}
-            dismissedCreepBanner={dismissedCreepBanner}
-            dismissCreepBanner={() => setDismissedCreepBanner(true)}
+            showScopeCreepBanner={showScopeCreepBanner}
+            scopeCreepTone={scopeCreepTone}
+            dismissCreepBanner={dismissScopeCreepBanner}
           />
         )}
 
@@ -1659,6 +1731,7 @@ function App() {
             deleteLog={deleteBuildLog}
             updateItem={updateScopeItem}
             logSaved={logSaved}
+            forecastMovement={forecastMovement}
             editingLogId={editingLogId}
             editingDraft={editingLogDraft}
             setEditingDraft={setEditingLogDraft}
@@ -1752,11 +1825,8 @@ function App() {
           items={activeScopeItems}
           formError={logFormError}
           logSaved={logSaved}
-          addLog={() => {
-            const hasSummary = Boolean(logDraft.summary.trim())
-            addBuildLog()
-            if (hasSummary) setQuickLogSheetOpen(false)
-          }}
+          forecastMovement={forecastMovement}
+          addLog={addBuildLog}
           onClose={() => setQuickLogSheetOpen(false)}
         />
       )}
@@ -1809,6 +1879,18 @@ function CountUpNumber({ value, suffix = '', decimals = 0 }: { value: number; su
       {displayValue.toFixed(decimals)}
       {suffix}
     </span>
+  )
+}
+
+function ForecastMovementIndicator({ movement }: { movement: ForecastMovement | null }) {
+  if (!movement) return null
+  const improved = movement.direction === 'improved'
+  const Icon = improved ? ArrowUp : ArrowDown
+  return (
+    <div className={`forecast-movement ${movement.direction}`} aria-live="polite">
+      <Icon size={16} />
+      <span>{improved ? `+${movement.days} days sooner` : `${movement.days} days later`}</span>
+    </div>
   )
 }
 
@@ -2054,7 +2136,8 @@ function Dashboard({
   createProject,
   projectFormError,
   clearProjectFormError,
-  dismissedCreepBanner,
+  showScopeCreepBanner,
+  scopeCreepTone,
   dismissCreepBanner,
   showTrialUpgradeBanner,
   trialDaysLeft,
@@ -2071,7 +2154,8 @@ function Dashboard({
   createProject: () => void
   projectFormError: string
   clearProjectFormError: () => void
-  dismissedCreepBanner: boolean
+  showScopeCreepBanner: boolean
+  scopeCreepTone: 'warning' | 'danger'
   dismissCreepBanner: () => void
   showTrialUpgradeBanner: boolean
   trialDaysLeft: number
@@ -2176,12 +2260,15 @@ function Dashboard({
         </div>
       </div>
 
-      {metrics.addedHours > 0 && !dismissedCreepBanner && (
-        <div className="scope-creep-banner">
+      {showScopeCreepBanner && (
+        <div className={`scope-creep-banner ${scopeCreepTone}`}>
           <AlertTriangle size={18} />
           <div>
-            <strong>You have added {metrics.addedHours}h of scope since project start.</strong>
-            <p>{metrics.addedItems.length} added items may move the forecast by about +{metrics.forecastImpactDays} days.</p>
+            <strong>
+              Scope has grown by {Math.max(0, metrics.currentScopeHours - metrics.baselineScopeHours)} hours since baseline -{' '}
+              {metrics.addedItems.length} items added after project start.
+            </strong>
+            <p>Your forecast has shifted {metrics.forecastImpactDays} days later.</p>
           </div>
           <button className="icon-button" type="button" aria-label="Dismiss scope creep banner" onClick={dismissCreepBanner}>
             <X size={16} />
@@ -2380,7 +2467,8 @@ function ScopeView({
   rankItem,
   deleteItem,
   metrics,
-  dismissedCreepBanner,
+  showScopeCreepBanner,
+  scopeCreepTone,
   dismissCreepBanner,
 }: {
   items: ScopeItem[]
@@ -2393,7 +2481,8 @@ function ScopeView({
   rankItem: (id: string, direction: 'up' | 'down') => void
   deleteItem: (id: string) => void
   metrics: ShipMetrics
-  dismissedCreepBanner: boolean
+  showScopeCreepBanner: boolean
+  scopeCreepTone: 'warning' | 'danger'
   dismissCreepBanner: () => void
 }) {
   const [mobileExpandedColumns, setMobileExpandedColumns] = useState<Record<ColumnKey, boolean>>({
@@ -2443,12 +2532,15 @@ function ScopeView({
       </div>
       {formError && <InlineError message={formError} actionLabel="Try again" onAction={() => setDraft({ ...draft, title: '' })} />}
 
-      {metrics.addedHours > 0 && !dismissedCreepBanner && (
-        <div className="scope-creep-banner">
+      {showScopeCreepBanner && (
+        <div className={`scope-creep-banner ${scopeCreepTone}`}>
           <AlertTriangle size={18} />
           <div>
-            <strong>You have added {metrics.addedHours}h of scope since project start.</strong>
-            <p>{metrics.addedItems.length} added items may move the forecast by about +{metrics.forecastImpactDays} days.</p>
+            <strong>
+              Scope has grown by {Math.max(0, metrics.currentScopeHours - metrics.baselineScopeHours)} hours since baseline -{' '}
+              {metrics.addedItems.length} items added after project start.
+            </strong>
+            <p>Your forecast has shifted {metrics.forecastImpactDays} days later.</p>
           </div>
           <button className="icon-button" type="button" aria-label="Dismiss scope creep banner" onClick={dismissCreepBanner}>
             <X size={16} />
@@ -2503,7 +2595,7 @@ function ScopeView({
                 {columnItems.map((item) => (
                   <article className={`scope-card ${!item.existedAtBaseline ? 'added' : ''}`} key={item.id}>
                     <GripVertical className="drag-handle" size={16} aria-hidden="true" />
-                    {!item.existedAtBaseline && <span className="added-badge">Added</span>}
+                    {!item.existedAtBaseline && <span className="added-badge">Added after baseline</span>}
                     <div className="scope-card-head">
                       <strong>{item.title}</strong>
                       <div className="scope-card-actions">
@@ -2616,6 +2708,7 @@ function LogsView({
   deleteLog,
   updateItem,
   logSaved,
+  forecastMovement,
   editingLogId,
   editingDraft,
   setEditingDraft,
@@ -2632,6 +2725,7 @@ function LogsView({
   deleteLog: (id: string) => void
   updateItem: (id: string, patch: Partial<ScopeItem>) => void
   logSaved: boolean
+  forecastMovement: ForecastMovement | null
   editingLogId: string | null
   editingDraft: { logDate: string; hours: number; summary: string; blockers: string; scopeItemId: string; newScopeAdded: boolean }
   setEditingDraft: (draft: { logDate: string; hours: number; summary: string; blockers: string; scopeItemId: string; newScopeAdded: boolean }) => void
@@ -2695,9 +2789,12 @@ function LogsView({
         </label>
         {formError && <InlineError message={formError} actionLabel="Try again" onAction={() => setDraft({ ...draft, summary: '' })} />}
         {logSaved && (
-          <div className="save-confirmation">
-            <Check size={16} />
-            Build log saved.
+          <div className="log-save-feedback">
+            <div className="save-confirmation">
+              <Check size={16} />
+              Build log saved.
+            </div>
+            <ForecastMovementIndicator movement={forecastMovement} />
           </div>
         )}
       </div>
@@ -2817,6 +2914,7 @@ function QuickLogSheet({
   items,
   formError,
   logSaved,
+  forecastMovement,
   addLog,
   onClose,
 }: {
@@ -2825,6 +2923,7 @@ function QuickLogSheet({
   items: ScopeItem[]
   formError: string
   logSaved: boolean
+  forecastMovement: ForecastMovement | null
   addLog: () => void
   onClose: () => void
 }) {
@@ -2872,9 +2971,12 @@ function QuickLogSheet({
         </label>
         {formError && <InlineError message={formError} actionLabel="Try again" onAction={() => setDraft({ ...draft, summary: '' })} />}
         {logSaved && (
-          <div className="save-confirmation">
-            <Check size={16} />
-            Build log saved.
+          <div className="log-save-feedback">
+            <div className="save-confirmation">
+              <Check size={16} />
+              Build log saved.
+            </div>
+            <ForecastMovementIndicator movement={forecastMovement} />
           </div>
         )}
         <button className="button primary full" type="button" onClick={addLog}>

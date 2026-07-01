@@ -1658,16 +1658,27 @@ button:focus-visible {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  border: 1px solid var(--color-mist);
-  border-left: 4px solid var(--color-coral);
+  border: 1px solid rgba(249, 115, 91, 0.28);
+  border-left: 3px solid var(--color-coral);
   border-radius: var(--radius-md);
   padding: 14px 16px;
-  background: var(--color-cloud);
+  background: #fff1ee;
   animation: rise-in 0.25s ease-out both, coral-pulse 4s ease-in-out infinite;
 }
 
 .scope-creep-banner svg {
   color: var(--color-coral);
+}
+
+.scope-creep-banner.warning {
+  border-color: rgba(217, 119, 6, 0.28);
+  border-left-color: var(--color-risk);
+  background: #fff7ed;
+  animation-name: rise-in, risk-pulse;
+}
+
+.scope-creep-banner.warning svg {
+  color: var(--color-risk);
 }
 
 .scope-creep-banner p {
@@ -1684,6 +1695,17 @@ button:focus-visible {
 
   50% {
     border-left-color: rgba(249, 115, 91, 0.45);
+  }
+}
+
+@keyframes risk-pulse {
+  0%,
+  100% {
+    border-left-color: var(--color-risk);
+  }
+
+  50% {
+    border-left-color: rgba(217, 119, 6, 0.42);
   }
 }
 
@@ -1876,6 +1898,35 @@ button:focus-visible {
   color: var(--color-harbor);
   font-weight: 800;
   animation: rise-in 0.2s ease both;
+}
+
+.log-save-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.forecast-movement {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 800;
+  animation: rise-in 0.2s ease-out both;
+}
+
+.forecast-movement.improved {
+  color: var(--color-harbor);
+  background: var(--color-clear-sky);
+}
+
+.forecast-movement.worsened {
+  color: var(--color-coral);
+  background: #fff1ee;
 }
 
 .empty-state {
