@@ -1904,14 +1904,14 @@ function EmptyState({
 }: {
   icon: typeof Activity
   title: string
-  body: string
-  action: ReactNode
+  body?: string
+  action?: ReactNode
 }) {
   return (
     <div className="empty-state">
       <Icon size={40} />
       <strong>{title}</strong>
-      <p>{body}</p>
+      {body && <p>{body}</p>}
       {action}
     </div>
   )
@@ -2080,6 +2080,64 @@ function Dashboard({
   const completedPercent = metrics.shipHours > 0 ? (metrics.completedShipHours / metrics.shipHours) * 100 : 0
   const daysUntilForecast = getDaysUntil(metrics.forecastDate)
   const scopeGrowthWarning = metrics.scopeGrowthPercent > 20
+  const focusProjectName = () => document.querySelector<HTMLInputElement>('[data-project-name-input="true"]')?.focus()
+
+  if (projects.length === 0) {
+    return (
+      <section className="page-stack dashboard-empty-layout">
+        <EmptyState
+          icon={Rocket}
+          title="Your first project is one step away"
+          body="Create a project, set your scope, and ShipCheck will forecast your launch date automatically."
+          action={
+            <button className="button primary" type="button" onClick={focusProjectName}>
+              Create your first project
+            </button>
+          }
+        />
+        <div className="new-project-panel dashboard-empty-form">
+          <FolderPlus size={24} />
+          <h3>Create project</h3>
+          <label>
+            Project name
+            <input
+              data-project-name-input="true"
+              value={newProjectDraft.name}
+              placeholder="Customer Portal MVP"
+              onChange={(event) => {
+                setNewProjectDraft({ ...newProjectDraft, name: event.target.value })
+                clearProjectFormError()
+              }}
+            />
+          </label>
+          <label>
+            Project type
+            <select value={newProjectDraft.type} onChange={(event) => setNewProjectDraft({ ...newProjectDraft, type: event.target.value as ProjectType })}>
+              <option>MVP/Product</option>
+              <option>Client Project</option>
+              <option>Internal Project</option>
+              <option>Creator Project</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>
+            Weekly hours
+            <input
+              type="number"
+              min="1"
+              value={newProjectDraft.weeklyAvailableHours}
+              onChange={(event) => setNewProjectDraft({ ...newProjectDraft, weeklyAvailableHours: Number(event.target.value) })}
+            />
+          </label>
+          <button className="button primary full" type="button" onClick={createProject}>
+            <Plus size={16} />
+            Create project
+          </button>
+          {projectFormError && <InlineError message={projectFormError} actionLabel="Try again" onAction={clearProjectFormError} />}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="page-grid">
@@ -2343,6 +2401,7 @@ function ScopeView({
     later: false,
     cut: false,
   })
+  const focusScopeInput = () => document.querySelector<HTMLInputElement>('[data-scope-title-input="true"]')?.focus()
 
   return (
     <section className="page-stack">
@@ -2354,7 +2413,12 @@ function ScopeView({
       </div>
 
       <div className="quick-add">
-        <input value={draft.title} placeholder="Add a scope item" onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+        <input
+          data-scope-title-input="true"
+          value={draft.title}
+          placeholder="Add a scope item"
+          onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+        />
         <input
           type="number"
           min="1"
@@ -2421,12 +2485,18 @@ function ScopeView({
                 {columnItems.length === 0 && (
                   <EmptyState
                     icon={ListChecks}
-                    title="Add the work that must exist before launch."
-                    body="Keep this list smaller than feels comfortable."
+                    title={column === 'ship' ? 'Nothing in scope yet' : 'Nothing here yet'}
+                    body={
+                      column === 'ship'
+                        ? 'Add your first scope item - everything that must exist before you launch.'
+                        : undefined
+                    }
                     action={
-                      <button className="button primary" type="button" onClick={addItem}>
-                        Add scope item
-                      </button>
+                      column === 'ship' ? (
+                        <button className="button primary" type="button" onClick={focusScopeInput}>
+                          Add scope item
+                        </button>
+                      ) : undefined
                     }
                   />
                 )}
@@ -2569,6 +2639,8 @@ function LogsView({
   saveEdit: () => void
   cancelEdit: () => void
 }) {
+  const focusLogSummary = () => document.querySelector<HTMLTextAreaElement>('[data-log-summary-input="true"]')?.focus()
+
   return (
     <section className="page-grid logs-grid">
       <div className="log-form">
@@ -2596,7 +2668,13 @@ function LogsView({
           </label>
           <label className="quick-log-summary">
             Summary
-            <textarea value={draft.summary} rows={2} placeholder="What moved forward?" onChange={(event) => setDraft({ ...draft, summary: event.target.value })} />
+            <textarea
+              data-log-summary-input="true"
+              value={draft.summary}
+              rows={2}
+              placeholder="What moved forward?"
+              onChange={(event) => setDraft({ ...draft, summary: event.target.value })}
+            />
           </label>
           <button className="button primary" type="button" onClick={addLog}>
             <Plus size={16} />
@@ -2634,11 +2712,11 @@ function LogsView({
         {logs.length === 0 && (
           <EmptyState
             icon={Clock3}
-            title="Log today's work."
-            body="A short note and time spent is enough to update your forecast."
+            title="No logs yet"
+            body="Log your first session to start building your launch forecast."
             action={
-              <button className="button primary" type="button" onClick={addLog}>
-                Log It
+              <button className="button primary" type="button" onClick={focusLogSummary}>
+                Log today's work
               </button>
             }
           />

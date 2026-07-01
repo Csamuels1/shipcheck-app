@@ -2012,6 +2012,17 @@ button:focus-visible {
   font-weight: 700;
 }
 
+.dashboard-empty-layout {
+  min-height: calc(100vh - 180px);
+  align-content: center;
+  justify-items: center;
+}
+
+.dashboard-empty-layout .empty-state,
+.dashboard-empty-form {
+  width: min(560px, 100%);
+}
+
 .inline-error {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
