@@ -1764,6 +1764,7 @@ function App() {
           <ShippedMoment
             project={activeProject}
             metrics={metrics}
+            logCount={activeLogs.length}
             setView={setView}
             startNewProject={() => {
               setView('projects')
@@ -3332,42 +3333,127 @@ function ReportsView({
 function ShippedMoment({
   project,
   metrics,
+  logCount,
   setView,
   startNewProject,
 }: {
   project: Project
   metrics: ShipMetrics
+  logCount: number
   setView: (view: ViewKey) => void
   startNewProject: () => void
 }) {
+  const shippedDate = formatDate(today)
+  const buildDays = Math.max(1, daysBetween(project.startDate, isoToday) + 1)
+  const completedItems = metrics.shipItems.filter((item) => item.status === 'done').length
+  const driftHours = metrics.addedHours
+  const targetDelta = daysBetween(project.targetLaunchDate, isoToday)
+  const scopeDriftCopy = driftHours > 0 ? `+${driftHours} hours added after baseline` : 'No scope drift'
+  const targetCopy =
+    targetDelta === 0
+      ? 'Your final launch landed on your original target.'
+      : `Your final launch landed ${Math.abs(targetDelta)} day${Math.abs(targetDelta) === 1 ? '' : 's'} ${
+          targetDelta < 0 ? 'ahead of' : 'behind'
+        } your original target.`
+  const story = `You shipped ${project.name} in ${buildDays} day${buildDays === 1 ? '' : 's'}, logging ${metrics.loggedHours.toFixed(
+    1,
+  )} hours across ${logCount} session${logCount === 1 ? '' : 's'}. ${
+    driftHours > 0 ? `Scope grew by ${driftHours} hours after baseline. ` : 'Scope stayed aligned with the baseline. '
+  }${targetCopy}`
+  const shareUrl = typeof window !== 'undefined' ? window.location.origin : 'https://shipcheck.app'
+
+  const downloadShareCard = () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1200
+    canvas.height = 630
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#fafaf7'
+    context.fillRect(48, 48, 1104, 534)
+    context.strokeStyle = '#e7ece9'
+    context.lineWidth = 3
+    context.strokeRect(48, 48, 1104, 534)
+    context.fillStyle = '#0f766e'
+    context.beginPath()
+    context.roundRect(92, 88, 56, 56, 12)
+    context.fill()
+    context.strokeStyle = '#ffffff'
+    context.lineWidth = 6
+    context.beginPath()
+    context.moveTo(108, 118)
+    context.lineTo(122, 132)
+    context.lineTo(144, 104)
+    context.stroke()
+    context.fillStyle = '#18201f'
+    context.font = '700 56px Inter, Arial, sans-serif'
+    context.fillText(project.name, 92, 226, 920)
+    context.font = '700 34px Inter, Arial, sans-serif'
+    context.fillText('Shipped with ShipCheck', 92, 288)
+    context.fillStyle = '#3f4a47'
+    context.font = '500 28px Inter, Arial, sans-serif'
+    context.fillText(`Shipped ${shippedDate}`, 92, 360)
+    context.fillText(`${metrics.loggedHours.toFixed(1)} hours logged`, 92, 410)
+    context.fillText(scopeDriftCopy, 92, 460)
+    context.fillStyle = '#0f766e'
+    context.font = '800 28px Inter, Arial, sans-serif'
+    context.fillText(shareUrl, 92, 528)
+
+    const link = document.createElement('a')
+    link.download = `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-shipcheck-card.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  }
+
   return (
     <section className="shipped-screen">
-      <div className="shipped-mark">
-        <Check size={42} />
-      </div>
-      <span className="eyebrow">Launch complete</span>
-      <h2>Project Shipped.</h2>
-      <p>{project.name}</p>
+      <div className="shipped-content">
+        <svg className="shipped-check" viewBox="0 0 80 80" aria-hidden="true">
+          <circle cx="40" cy="40" r="34" />
+          <path d="M24 41.5 35.5 53 57 28" />
+        </svg>
+        <h2>Shipped.</h2>
+        <p>{project.name} is done. Here's how it went.</p>
 
-      <div className="shipped-stats">
-        <MetricCard icon={CalendarDays} label="Launch date" value={formatDate(today)} detail="Marked shipped today" />
-        <MetricCard icon={Clock3} label="Total hours logged" value={`${metrics.loggedHours.toFixed(1)}h`} detail="Across build logs" />
-        <MetricCard icon={Target} label="Scope completed" value={`${metrics.completedShipHours}h`} detail={`${metrics.shipHours}h total Ship scope`} />
-      </div>
+        <div className="shipped-stats">
+          <MetricCard icon={CalendarDays} label="Launch date" value={shippedDate} detail="Actual ship date" />
+          <MetricCard icon={Clock3} label="Total hours logged" value={`${metrics.loggedHours.toFixed(1)}h`} detail={`${logCount} build sessions`} />
+          <MetricCard icon={Target} label="Scope items completed" value={`${completedItems}`} detail={`${metrics.shipItems.length} Ship items tracked`} />
+          <MetricCard icon={AlertTriangle} label="Scope drift" value={driftHours > 0 ? `+${driftHours}h` : '0h'} detail={scopeDriftCopy} />
+        </div>
 
-      <div className="share-card" aria-label="Shareable shipped card">
-        <strong>{project.name}</strong>
-        <span>Shipped with ShipCheck</span>
-        <p>{metrics.addedHours}h added scope · {metrics.forecastConfidence} forecast confidence</p>
-      </div>
+        <p className="launch-story">{story}</p>
 
-      <div className="button-row">
-        <button className="button primary" type="button" onClick={() => setView('reports')}>
-          View Final Report
-        </button>
-        <button className="button secondary" type="button" onClick={startNewProject}>
-          Start a New Project
-        </button>
+        <div className="share-card" aria-label="Shareable shipped card">
+          <div className="share-card-brand">
+            <span className="brand-mark" aria-hidden="true">
+              <Check size={17} strokeWidth={3} />
+            </span>
+            <strong>ShipCheck</strong>
+          </div>
+          <h3>{project.name}</h3>
+          <p>Shipped {shippedDate}</p>
+          <div>
+            <span>{metrics.loggedHours.toFixed(1)}h logged</span>
+            <span>{scopeDriftCopy}</span>
+          </div>
+          <small>{shareUrl}</small>
+        </div>
+
+        <div className="button-row shipped-actions">
+          <button className="button secondary" type="button" onClick={downloadShareCard}>
+            <Download size={16} />
+            Download card
+          </button>
+          <button className="button secondary" type="button" onClick={() => setView('reports')}>
+            View Final Report
+          </button>
+          <button className="button primary" type="button" onClick={startNewProject}>
+            Start a New Project
+          </button>
+        </div>
       </div>
     </section>
   )

@@ -2288,7 +2288,6 @@ button:focus-visible {
   color: var(--color-coral);
 }
 
-.shipped-screen,
 .forecast-reveal {
   min-height: calc(100vh - 160px);
   display: grid;
@@ -2297,6 +2296,50 @@ button:focus-visible {
   gap: 18px;
   text-align: center;
   background: var(--color-paper);
+}
+
+.shipped-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  min-height: 100vh;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  text-align: center;
+  background: var(--color-white);
+}
+
+.shipped-content {
+  width: min(960px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+}
+
+.shipped-check {
+  width: 92px;
+  height: 92px;
+  color: var(--color-harbor);
+}
+
+.shipped-check circle,
+.shipped-check path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 5;
+  stroke-dasharray: 240;
+  stroke-dashoffset: 240;
+  animation: check-draw 0.7s ease-out forwards;
+}
+
+.shipped-check path {
+  stroke-dasharray: 70;
+  stroke-dashoffset: 70;
+  animation-delay: 0.18s;
 }
 
 .onboarding-forecast-page {
@@ -2388,12 +2431,25 @@ button:focus-visible {
   }
 }
 
+@keyframes check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 .shipped-screen h2,
 .forecast-reveal h1 {
   margin: 0;
   color: var(--color-ink);
   font-size: 40px;
   line-height: 48px;
+}
+
+.shipped-screen > .shipped-content > p {
+  margin: 0;
+  color: var(--color-slate);
+  font-size: 16px;
+  line-height: 24px;
 }
 
 .forecast-reveal strong {
@@ -2405,22 +2461,87 @@ button:focus-visible {
 .shipped-stats {
   width: min(920px, 100%);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
+.launch-story {
+  width: min(720px, 100%);
+  margin: 0;
+  color: var(--color-slate);
+  font-size: 16px;
+  line-height: 26px;
+}
+
 .share-card {
-  width: min(460px, 100%);
+  width: min(560px, 100%);
   border: 1px solid var(--color-mist);
   border-radius: var(--radius-lg);
-  padding: 22px;
-  background: var(--color-white);
+  padding: 24px;
+  background: var(--color-paper);
   box-shadow: 0 10px 24px rgba(24, 32, 31, 0.08);
+  text-align: left;
+}
+
+.share-card-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.share-card-brand .brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+}
+
+.share-card h3 {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 28px;
+  line-height: 36px;
+}
+
+.share-card p {
+  margin: 8px 0 18px;
+  color: var(--color-slate);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.share-card div:not(.share-card-brand) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.share-card div:not(.share-card-brand) span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--color-harbor);
+  background: var(--color-clear-sky);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 800;
+}
+
+.share-card small {
+  display: block;
+  margin-top: 22px;
+  color: var(--color-slate);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
 }
 
 .share-card strong,
 .share-card span {
   display: block;
+}
+
+.shipped-actions {
+  justify-content: center;
 }
 
 .bottom-nav,
