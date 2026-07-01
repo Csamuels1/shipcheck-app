@@ -53,6 +53,34 @@
   color: var(--color-ink);
 }
 
+.landing-return-banner {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--color-harbor);
+  background: var(--color-clear-sky);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.landing-return-banner button {
+  border: 0;
+  padding: 0;
+  color: var(--color-harbor);
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .landing-hero {
   display: flex;
   flex-direction: column;

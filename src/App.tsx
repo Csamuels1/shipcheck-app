@@ -878,7 +878,7 @@ function App() {
   const legalPage: LegalPageKind | null = currentPath === '/privacy' ? 'privacy' : currentPath === '/terms' ? 'terms' : null
 
   useEffect(() => {
-    if (auth.configured && auth.user && !auth.isPasswordRecovery && (currentPath === '/' || currentPath === '/login' || currentPath === '/signup')) {
+    if (auth.configured && auth.user && !auth.isPasswordRecovery && (currentPath === '/login' || currentPath === '/signup')) {
       window.history.replaceState({}, '', '/dashboard')
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentPath('/dashboard')
@@ -1538,13 +1538,13 @@ function App() {
     )
   }
 
-  // Always show Landing Page at root unless logged in
-  if (currentPath === '/' && !auth.user) {
+  if (currentPath === '/') {
     return (
       <LandingPage 
         onNavigate={navigateTo} 
         billingStatus={billingStatus} 
         billingPlanLoading={billingPlanLoading}
+        isLoggedIn={Boolean(auth.user)}
       />
     )
   }

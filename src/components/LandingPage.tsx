@@ -6,10 +6,12 @@ export function LandingPage({
   onNavigate,
   billingStatus,
   billingPlanLoading,
+  isLoggedIn = false,
 }: {
   onNavigate: (path: string) => void
   billingStatus: string
   billingPlanLoading: string
+  isLoggedIn?: boolean
 }) {
   const scrollToHowItWorks = () => {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })
@@ -30,12 +32,29 @@ export function LandingPage({
         </div>
         <div className="landing-nav-links">
           <a onClick={scrollToPricing}>Pricing</a>
-          <a onClick={() => onNavigate('/login')}>Log in</a>
-          <button className="button primary" onClick={() => onNavigate('/signup')}>
-            Sign up free
-          </button>
+          {isLoggedIn ? (
+            <button className="button primary" onClick={() => onNavigate('/dashboard')}>
+              Open App
+            </button>
+          ) : (
+            <>
+              <a onClick={() => onNavigate('/login')}>Log in</a>
+              <button className="button primary" onClick={() => onNavigate('/signup')}>
+                Sign up free
+              </button>
+            </>
+          )}
         </div>
       </nav>
+
+      {isLoggedIn && (
+        <div className="landing-return-banner">
+          <span>You are logged in.</span>
+          <button type="button" onClick={() => onNavigate('/dashboard')}>
+            Go to Dashboard
+          </button>
+        </div>
+      )}
 
       <header className="landing-hero">
         <h1>Know what to ship. Know what to cut. Know when you launch.</h1>
@@ -43,8 +62,8 @@ export function LandingPage({
           ShipCheck helps builders and small teams control scope, log real progress, forecast launch dates, and catch scope creep before it becomes burnout.
         </p>
         <div className="landing-cta-group">
-          <button className="button primary" onClick={() => onNavigate('/signup')}>
-            Start free — no credit card required
+          <button className="button primary" onClick={() => onNavigate(isLoggedIn ? '/dashboard' : '/signup')}>
+            {isLoggedIn ? 'Open App' : 'Start free - no credit card required'}
           </button>
           <button className="button secondary" onClick={scrollToHowItWorks}>
             See how it works
@@ -139,7 +158,7 @@ export function LandingPage({
             // User will provide the actual contact method for Enterprise
             alert('Enterprise contact method to be added')
           } else {
-            onNavigate('/signup')
+            onNavigate(isLoggedIn ? '/dashboard' : '/signup')
           }
         }} 
       />
@@ -153,8 +172,14 @@ export function LandingPage({
         </div>
         <div className="landing-footer-links">
           <a onClick={scrollToPricing}>Pricing</a>
-          <a onClick={() => onNavigate('/login')}>Login</a>
-          <a onClick={() => onNavigate('/signup')}>Sign Up</a>
+          {isLoggedIn ? (
+            <a onClick={() => onNavigate('/dashboard')}>Open App</a>
+          ) : (
+            <>
+              <a onClick={() => onNavigate('/login')}>Login</a>
+              <a onClick={() => onNavigate('/signup')}>Sign Up</a>
+            </>
+          )}
           <a onClick={() => onNavigate('/privacy')}>Privacy</a>
           <a onClick={() => onNavigate('/terms')}>Terms</a>
         </div>
